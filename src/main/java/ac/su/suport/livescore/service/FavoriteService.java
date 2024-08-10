@@ -29,10 +29,10 @@ public class FavoriteService {
                 .collect(Collectors.toList());
     }
 
-    public FavoriteDTO addFavorite(Long userId, Long matchId) {
+    public FavoriteDTO addFavorite(FavoriteDTO favoriteDTO) {
         Favorite favorite = new Favorite();
-        favorite.setUser(userRepository.findById(userId).orElseThrow());
-        favorite.setMatch(matchRepository.findById(matchId).orElseThrow());
+        favorite.setUser(userRepository.findById(favoriteDTO.getUserId()).orElseThrow());
+        favorite.setMatch(matchRepository.findById(favoriteDTO.getMatchId()).orElseThrow());
         Favorite savedFavorite = favoriteRepository.save(favorite);
         return toDTO(savedFavorite);
     }

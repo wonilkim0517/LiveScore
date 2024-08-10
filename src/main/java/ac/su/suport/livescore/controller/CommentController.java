@@ -30,18 +30,17 @@ public class CommentController {
         return commentService.createComment(matchId, userId, commentDTO);
     }
 
-
-    @PutMapping("/{commentId}")
-    public ResponseEntity<CommentDTO> updateComment(@PathVariable Long commentId, @RequestBody CommentDTO commentDTO) {
-        Optional<CommentDTO> updatedComment = commentService.updateComment(commentId, commentDTO);
+    @PutMapping("/{id}")
+    public ResponseEntity<CommentDTO> updateComment(@PathVariable Long id, @RequestBody CommentDTO commentDTO) {
+        Optional<CommentDTO> updatedComment = commentService.updateComment(id, commentDTO);
         return updatedComment.map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
     }
 
-//    @DeleteMapping("/{id}")
-//    public ResponseEntity<Void> deleteComment(@PathVariable Long id) {
-//        commentService.deleteComment(id);
-//        return ResponseEntity.noContent().build();
-//    }
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteComment(@PathVariable Long id) {
+        commentService.deleteComment(id);
+        return ResponseEntity.noContent().build();
+    }
 
     // 댓글 삭제 요청을 처리하는 엔드포인트
     @DeleteMapping("/{commentId}")
@@ -60,8 +59,6 @@ public class CommentController {
             return ResponseEntity.status(403).body("You are not authorized to delete this comment.");
         }
     }
-
-
 
     @GetMapping("/{matchId}")
     public List<CommentDTO> getCommentsByMatchId(@PathVariable Long matchId) {
