@@ -1,18 +1,16 @@
 package ac.su.suport.livescore.service;
 
-import ac.su.suport.livescore.constant.MatchResult;
+import ac.su.suport.livescore.constant.DepartmentEnum;
 import ac.su.suport.livescore.constant.MatchStatus;
 import ac.su.suport.livescore.constant.MatchType;
 import ac.su.suport.livescore.domain.Match;
 import ac.su.suport.livescore.domain.MatchTeam;
 import ac.su.suport.livescore.domain.Team;
-import ac.su.suport.livescore.dto.BracketDTO;
-import ac.su.suport.livescore.dto.GroupDTO;
-import ac.su.suport.livescore.dto.TeamStandingDTO;
+import ac.su.suport.livescore.dto.*;
 import ac.su.suport.livescore.repository.MatchRepository;
 import ac.su.suport.livescore.repository.MatchTeamRepository;
 import ac.su.suport.livescore.repository.TeamRepository;
-import jakarta.persistence.EntityNotFoundException;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -20,6 +18,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
+@Transactional
 @RequiredArgsConstructor
 public class BracketService {
 
@@ -27,290 +26,190 @@ public class BracketService {
     private final TeamRepository teamRepository;
     private final MatchTeamRepository matchTeamRepository;
 
-    public List<GroupDTO> getSportLeagueBrackets(String sport) {
+    public Map<String, List<GroupDTO>> getSportLeagueBrackets(String sport) {
         List<Match> matches = matchRepository.findBySportAndMatchType(sport, MatchType.LEAGUE);
-        return groupMatchesByGroupName(matches);
+        Map<String, List<Team>> teamsByGroup = groupTeamsByGroup(matches);
+        Map<String, List<GroupDTO>> result = new HashMap<>();
+
+        for (Map.Entry<String, List<Team>> entry : teamsByGroup.entrySet()) {
+            String groupName = entry.getKey();
+            List<Team> teamsInGroup = entry.getValue();
+
+            GroupDTO groupDTO = new GroupDTO();
+            groupDTO.setGroup(groupName);
+            groupDTO.setTeams(calculateStandings(teamsInGroup, matches));
+
+            result.computeIfAbsent(groupName, k -> new ArrayList<>()).add(groupDTO);
+        }
+
+        return result;
+    }
+    private Map<String, List<Team>> groupTeamsByGroup(List<Match> matches) {
+        Map<String, List<Team>> groupedTeams = new HashMap<>();
+        for (Match match : matches) {
+            String groupName = match.getGroupName();
+            for (MatchTeam matchTeam : match.getMatchTeams()) {
+                Team team = matchTeam.getTeam();
+                groupedTeams.computeIfAbsent(groupName, k -> new ArrayList<>()).add(team);
+            }
+        }
+        return groupedTeams;
     }
 
-    public List<BracketDTO> getSportTournamentBrackets(String sport) {
+    public List<TournamentMatchDTO> getSportTournamentBrackets(String sport) {
         List<Match> matches = matchRepository.findBySportAndMatchType(sport, MatchType.TOURNAMENT);
         return matches.stream()
-                .map(this::convertToBracketDTO)
+                .map(this::convertToTournamentMatchDTO)
                 .collect(Collectors.toList());
     }
 
-    private BracketDTO convertToBracketDTO(Match match) {
-        BracketDTO bracketDTO = new BracketDTO();
-        bracketDTO.setMatchId(match.getMatchId());
-        bracketDTO.setSports(match.getSport());
-        bracketDTO.setMatchDate(match.getDate());
-        bracketDTO.setStartTime(match.getStartTime());
-        bracketDTO.setMatchType(match.getMatchType());
-        bracketDTO.setMatchStatus(match.getStatus());
-        bracketDTO.setRound(match.getRound());
-
-        List<MatchTeam> matchTeams = match.getMatchTeams();
-        if (matchTeams.size() >= 2) {
-            MatchTeam matchTeamOne = matchTeams.get(0);
-            MatchTeam matchTeamTwo = matchTeams.get(1);
-
-            bracketDTO.setTeamOneId(matchTeamOne.getTeam().getTeamId());
-            bracketDTO.setTeamTwoId(matchTeamTwo.getTeam().getTeamId());
-            bracketDTO.setTeamOneName(matchTeamOne.getTeam().getTeamName());
-            bracketDTO.setTeamTwoName(matchTeamTwo.getTeam().getTeamName());
-            bracketDTO.setTeamOneScore(matchTeamOne.getScore());
-            bracketDTO.setTeamTwoScore(matchTeamTwo.getScore());
-        }
-
-        return bracketDTO;
-    }
-
+    @Transactional
     public BracketDTO createLeagueBracket(BracketDTO bracketDTO) {
-        Match match = new Match();
-        match.setSport(bracketDTO.getSports());
-        match.setDate(bracketDTO.getMatchDate());
-        match.setStartTime(bracketDTO.getStartTime());
-        match.setMatchType(MatchType.LEAGUE);
-        match.setStatus(MatchStatus.FUTURE);
-        match.setGroupName(bracketDTO.getGroupName());
-        match.setRound(bracketDTO.getRound());
+        Match match = convertToMatch(bracketDTO);
+        match.setMatchTeams(new ArrayList<>());
 
-        matchRepository.save(match);
-
-        Team teamOne = teamRepository.findById(bracketDTO.getTeamOneId())
-                .orElseThrow(() -> new EntityNotFoundException("Team not found with id: " + bracketDTO.getTeamOneId()));
-        Team teamTwo = teamRepository.findById(bracketDTO.getTeamTwoId())
-                .orElseThrow(() -> new EntityNotFoundException("Team not found with id: " + bracketDTO.getTeamTwoId()));
+        Team teamOne = teamRepository.findByDepartment(bracketDTO.getTeamOneName())
+                .orElseThrow(() -> new IllegalArgumentException("Team not found: " + bracketDTO.getTeamOneName()));
+        Team teamTwo = teamRepository.findByDepartment(bracketDTO.getTeamTwoName())
+                .orElseThrow(() -> new IllegalArgumentException("Team not found: " + bracketDTO.getTeamTwoName()));
 
         MatchTeam matchTeamOne = new MatchTeam();
         matchTeamOne.setMatch(match);
         matchTeamOne.setTeam(teamOne);
-        matchTeamOne.setScore(0);
+        matchTeamOne.setScore(bracketDTO.getTeamOneScore());
+        match.getMatchTeams().add(matchTeamOne);
 
         MatchTeam matchTeamTwo = new MatchTeam();
         matchTeamTwo.setMatch(match);
         matchTeamTwo.setTeam(teamTwo);
-        matchTeamTwo.setScore(0);
+        matchTeamTwo.setScore(bracketDTO.getTeamTwoScore());
+        match.getMatchTeams().add(matchTeamTwo);
 
-        matchTeamRepository.save(matchTeamOne);
-        matchTeamRepository.save(matchTeamTwo);
+        match = matchRepository.save(match);
 
-        bracketDTO.setMatchId(match.getMatchId());
-        // 클라이언트가 제공한 팀 이름을 사용
-        bracketDTO.setTeamOneName(bracketDTO.getTeamOneName());
-        bracketDTO.setTeamTwoName(bracketDTO.getTeamTwoName());
-
-        return bracketDTO;
+        return convertToBracketDTO(match);
     }
 
-    public BracketDTO createTournamentBracket(BracketDTO bracketDTO) {
-        Match match = new Match();
-        match.setSport(bracketDTO.getSports());
-        match.setDate(bracketDTO.getMatchDate());
-        match.setStartTime(bracketDTO.getStartTime());
-        match.setMatchType(MatchType.TOURNAMENT);
-        match.setStatus(MatchStatus.FUTURE);
-        match.setRound(bracketDTO.getRound());
-
-        matchRepository.save(match);
-
-        Team teamOne = teamRepository.findById(bracketDTO.getTeamOneId())
-                .orElseThrow(() -> new EntityNotFoundException("Team not found with id: " + bracketDTO.getTeamOneId()));
-        Team teamTwo = teamRepository.findById(bracketDTO.getTeamTwoId())
-                .orElseThrow(() -> new EntityNotFoundException("Team not found with id: " + bracketDTO.getTeamTwoId()));
-
-        MatchTeam matchTeamOne = new MatchTeam();
-        matchTeamOne.setMatch(match);
-        matchTeamOne.setTeam(teamOne);
-        matchTeamOne.setScore(0);
-
-        MatchTeam matchTeamTwo = new MatchTeam();
-        matchTeamTwo.setMatch(match);
-        matchTeamTwo.setTeam(teamTwo);
-        matchTeamTwo.setScore(0);
-
-        matchTeamRepository.save(matchTeamOne);
-        matchTeamRepository.save(matchTeamTwo);
-
-        bracketDTO.setMatchId(match.getMatchId());
-        bracketDTO.setTeamOneName(teamOne.getTeamName());
-        bracketDTO.setTeamTwoName(teamTwo.getTeamName());
-        bracketDTO.setMatchStatus(MatchStatus.FUTURE);
-        bracketDTO.setMatchType(MatchType.TOURNAMENT);
-
-        return bracketDTO;
-    }
-
+    @Transactional
     public BracketDTO updateLeagueBracket(Long id, BracketDTO bracketDTO) {
-        Match match = matchRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Match not found with id: " + id));
-
-        match.setSport(bracketDTO.getSports());
-        match.setDate(bracketDTO.getMatchDate());
-        match.setStartTime(bracketDTO.getStartTime());
-        match.setGroupName(bracketDTO.getGroupName());
-        match.setStatus(bracketDTO.getMatchStatus());
+        Match match = matchRepository.findById(id).orElseThrow(() -> new RuntimeException("Match not found"));
+        updateMatchFromDTO(match, bracketDTO);
 
         List<MatchTeam> matchTeams = match.getMatchTeams();
-        MatchResult result = null;
-        int teamOnePoints = 0;
-        int teamTwoPoints = 0;
-
         if (matchTeams.size() >= 2) {
-            MatchTeam matchTeamOne = matchTeams.get(0);
-            MatchTeam matchTeamTwo = matchTeams.get(1);
+            MatchTeam teamOne = matchTeams.get(0);
+            MatchTeam teamTwo = matchTeams.get(1);
 
-            matchTeamOne.setScore(bracketDTO.getTeamOneScore());
-            matchTeamTwo.setScore(bracketDTO.getTeamTwoScore());
+            teamOne.setScore(bracketDTO.getTeamOneScore());
+            teamTwo.setScore(bracketDTO.getTeamTwoScore());
 
-            Team teamOne = matchTeamOne.getTeam();
-            Team teamTwo = matchTeamTwo.getTeam();
+            matchTeamRepository.save(teamOne);
+            matchTeamRepository.save(teamTwo);
 
-            // 경기 결과 결정
-            if (bracketDTO.getTeamOneScore() > bracketDTO.getTeamTwoScore()) {
-                result = MatchResult.TEAM_ONE_WIN;
-                teamOnePoints = 3;
-                teamTwoPoints = 0;
-            } else if (bracketDTO.getTeamOneScore() < bracketDTO.getTeamTwoScore()) {
-                result = MatchResult.TEAM_TWO_WIN;
-                teamOnePoints = 0;
-                teamTwoPoints = 3;
-            } else {
-                result = MatchResult.DRAW;
-                teamOnePoints = 1;
-                teamTwoPoints = 1;
+            if (match.getStatus() == MatchStatus.PAST) {
+                updateTeamStandings(teamOne, teamTwo);
             }
-
-            // 팀의 누적 포인트 업데이트
-            updateTeamPoints(teamOne, teamOnePoints);
-            updateTeamPoints(teamTwo, teamTwoPoints);
-
-            matchTeamRepository.save(matchTeamOne);
-            matchTeamRepository.save(matchTeamTwo);
         }
 
-        Match updatedMatch = matchRepository.save(match);
+        match = matchRepository.save(match);
+        return convertToBracketDTO(match);
+    }
 
-        BracketDTO updatedBracketDTO = new BracketDTO();
-        updatedBracketDTO.setMatchId(updatedMatch.getMatchId());
-        updatedBracketDTO.setSports(updatedMatch.getSport());
-        updatedBracketDTO.setMatchDate(updatedMatch.getDate());
-        updatedBracketDTO.setStartTime(updatedMatch.getStartTime());
-        updatedBracketDTO.setGroupName(updatedMatch.getGroupName());
-        updatedBracketDTO.setMatchStatus(updatedMatch.getStatus());
-        updatedBracketDTO.setMatchType(updatedMatch.getMatchType());
-        updatedBracketDTO.setRound(updatedMatch.getRound());
-        updatedBracketDTO.setMatchResult(result);
+    private void updateTeamStandings(MatchTeam teamOne, MatchTeam teamTwo) {
+        Team team1 = teamOne.getTeam();
+        Team team2 = teamTwo.getTeam();
 
-        if (matchTeams.size() >= 2) {
-            MatchTeam matchTeamOne = matchTeams.get(0);
-            MatchTeam matchTeamTwo = matchTeams.get(1);
+        int scoreOne = teamOne.getScore();
+        int scoreTwo = teamTwo.getScore();
 
-            updatedBracketDTO.setTeamOneId(matchTeamOne.getTeam().getTeamId());
-            updatedBracketDTO.setTeamTwoId(matchTeamTwo.getTeam().getTeamId());
-            updatedBracketDTO.setTeamOneName(matchTeamOne.getTeam().getTeamName());
-            updatedBracketDTO.setTeamTwoName(matchTeamTwo.getTeam().getTeamName());
-            updatedBracketDTO.setTeamOneScore(matchTeamOne.getScore());
-            updatedBracketDTO.setTeamTwoScore(matchTeamTwo.getScore());
-            updatedBracketDTO.setTeamOnePoints(teamOnePoints);  // 이 경기에서 얻은 포인트
-            updatedBracketDTO.setTeamTwoPoints(teamTwoPoints);  // 이 경기에서 얻은 포인트
+        if (scoreOne > scoreTwo) {
+            team1.setTeamPoint(team1.getTeamPoint() + 3);
+        } else if (scoreOne < scoreTwo) {
+            team2.setTeamPoint(team2.getTeamPoint() + 3);
+        } else {
+            team1.setTeamPoint(team1.getTeamPoint() + 1);
+            team2.setTeamPoint(team2.getTeamPoint() + 1);
         }
 
-        return updatedBracketDTO;
+        teamRepository.save(team1);
+        teamRepository.save(team2);
     }
-
-    private void updateTeamPoints(Team team, int pointsToAdd) {
-        team.setTeamPoint(team.getTeamPoint() + pointsToAdd);
-        teamRepository.save(team);
-    }
-
-    private BracketDTO convertToBracketDTO(Match match, MatchResult result) {
-        BracketDTO bracketDTO = new BracketDTO();
-        bracketDTO.setMatchId(match.getMatchId());
-        bracketDTO.setSports(match.getSport());
-        bracketDTO.setMatchDate(match.getDate());
-        bracketDTO.setStartTime(match.getStartTime());
-        bracketDTO.setMatchType(match.getMatchType());
-        bracketDTO.setMatchStatus(match.getStatus());
-        bracketDTO.setRound(match.getRound());
-        bracketDTO.setMatchResult(result);
-
-        List<MatchTeam> matchTeams = match.getMatchTeams();
-        if (matchTeams.size() >= 2) {
-            MatchTeam matchTeamOne = matchTeams.get(0);
-            MatchTeam matchTeamTwo = matchTeams.get(1);
-
-            bracketDTO.setTeamOneId(matchTeamOne.getTeam().getTeamId());
-            bracketDTO.setTeamTwoId(matchTeamTwo.getTeam().getTeamId());
-            bracketDTO.setTeamOneName(matchTeamOne.getTeam().getTeamName());
-            bracketDTO.setTeamTwoName(matchTeamTwo.getTeam().getTeamName());
-            bracketDTO.setTeamOneScore(matchTeamOne.getScore());
-            bracketDTO.setTeamTwoScore(matchTeamTwo.getScore());
-        }
-
-        return bracketDTO;
-    }
-
-
 
     public void deleteLeagueBracket(Long id) {
         Match match = matchRepository.findById(id).orElseThrow();
-
-        // 먼저 MatchTeam 엔티티 삭제
         matchTeamRepository.deleteAll(match.getMatchTeams());
-
-        // Match 엔티티 삭제
         matchRepository.delete(match);
     }
 
+    public BracketDTO createTournamentBracket(BracketDTO bracketDTO) {
+        Match match = convertToMatch(bracketDTO);
+        matchRepository.save(match);
+        saveMatchTeams(match, bracketDTO);
+        return convertToBracketDTO(match);
+    }
+
     public BracketDTO updateTournamentBracket(Long id, BracketDTO bracketDTO) {
-        Match match = matchRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Match not found with id: " + id));
-
-        match.setSport(bracketDTO.getSports());
-        match.setDate(bracketDTO.getMatchDate());
-        match.setStartTime(bracketDTO.getStartTime());
-        match.setRound(bracketDTO.getRound());
-        match.setStatus(bracketDTO.getMatchStatus());
-
-        List<MatchTeam> matchTeams = match.getMatchTeams();
-        MatchResult result = null;
-
-        if (matchTeams.size() >= 2) {
-            MatchTeam matchTeamOne = matchTeams.get(0);
-            MatchTeam matchTeamTwo = matchTeams.get(1);
-
-            matchTeamOne.setScore(bracketDTO.getTeamOneScore());
-            matchTeamTwo.setScore(bracketDTO.getTeamTwoScore());
-
-            // 경기 결과 결정
-            if (bracketDTO.getTeamOneScore() > bracketDTO.getTeamTwoScore()) {
-                result = MatchResult.TEAM_ONE_WIN;
-            } else if (bracketDTO.getTeamOneScore() < bracketDTO.getTeamTwoScore()) {
-                result = MatchResult.TEAM_TWO_WIN;
-            } else {
-                result = MatchResult.DRAW;
-            }
-
-            matchTeamRepository.save(matchTeamOne);
-            matchTeamRepository.save(matchTeamTwo);
+        Match match = matchRepository.findById(id).orElseThrow();
+        updateMatchFromDTO(match, bracketDTO);
+        matchRepository.save(match);
+        updateMatchTeams(match, bracketDTO);
+        if (match.getStatus() == MatchStatus.PAST) {
+            updateStandings(match);
         }
-
-        Match updatedMatch = matchRepository.save(match);
-
-        return convertToBracketDTO(updatedMatch, result);
+        return convertToBracketDTO(match);
     }
 
     public void deleteTournamentBracket(Long id) {
         Match match = matchRepository.findById(id).orElseThrow();
-
-        // 먼저 MatchTeam 엔티티 삭제
         matchTeamRepository.deleteAll(match.getMatchTeams());
-
-        // Match 엔티티 삭제
         matchRepository.delete(match);
     }
 
+    private Match convertToMatch(BracketDTO bracketDTO) {
+        Match match = new Match();
+        updateMatchFromDTO(match, bracketDTO);
+        return match;
+    }
+
+    private void updateMatchFromDTO(Match match, BracketDTO bracketDTO) {
+        match.setSport(bracketDTO.getSports());
+        match.setDate(bracketDTO.getMatchDate());
+        match.setStartTime(bracketDTO.getStartTime());
+        match.setMatchType(bracketDTO.getMatchType());
+        match.setStatus(bracketDTO.getMatchStatus());
+        match.setGroupName(bracketDTO.getGroupName());
+        match.setRound(bracketDTO.getRound());
+    }
+
+
+
+    private void saveMatchTeams(Match match, BracketDTO bracketDTO) {
+        Team teamOne = findOrCreateTeam(bracketDTO.getTeamOneName());
+        Team teamTwo = findOrCreateTeam(bracketDTO.getTeamTwoName());
+
+        // 팀을 먼저 저장합니다.
+        teamOne = teamRepository.save(teamOne);
+        teamTwo = teamRepository.save(teamTwo);
+
+        MatchTeam matchTeamOne = new MatchTeam(match, teamOne, bracketDTO.getTeamOneScore());
+        MatchTeam matchTeamTwo = new MatchTeam(match, teamTwo, bracketDTO.getTeamTwoScore());
+
+        matchTeamRepository.save(matchTeamOne);
+        matchTeamRepository.save(matchTeamTwo);
+    }
+
+
+    private Team findOrCreateTeam(DepartmentEnum department) {
+        return teamRepository.findByDepartment(department)
+                .orElseGet(() -> {
+                    Team newTeam = new Team();
+                    newTeam.setDepartment(department);
+                    newTeam.setTeamName(department.name());
+                    newTeam.setTeamPoint(0);
+                    newTeam.setScore(0);
+                    return teamRepository.save(newTeam);
+                });
+    }
     private void updateMatchTeams(Match match, BracketDTO bracketDTO) {
         List<MatchTeam> matchTeams = match.getMatchTeams();
 
@@ -318,8 +217,8 @@ public class BracketService {
             MatchTeam matchTeamOne = matchTeams.get(0);
             MatchTeam matchTeamTwo = matchTeams.get(1);
 
-            Team teamOne = teamRepository.findById(bracketDTO.getTeamOneId()).orElseThrow();
-            Team teamTwo = teamRepository.findById(bracketDTO.getTeamTwoId()).orElseThrow();
+            Team teamOne = findOrCreateTeam(bracketDTO.getTeamOneName());
+            Team teamTwo = findOrCreateTeam(bracketDTO.getTeamTwoName());
 
             matchTeamOne.setTeam(teamOne);
             matchTeamOne.setScore(bracketDTO.getTeamOneScore());
@@ -342,15 +241,11 @@ public class BracketService {
             Team teamOne = matchTeamOne.getTeam();
             Team teamTwo = matchTeamTwo.getTeam();
 
-            // 경기 결과를 업데이트
             if (matchTeamOne.getScore() > matchTeamTwo.getScore()) {
-                // Team one wins
                 teamOne.setTeamPoint(teamOne.getTeamPoint() + 3);
             } else if (matchTeamOne.getScore() < matchTeamTwo.getScore()) {
-                // Team two wins
                 teamTwo.setTeamPoint(teamTwo.getTeamPoint() + 3);
             } else {
-                // Draw
                 teamOne.setTeamPoint(teamOne.getTeamPoint() + 1);
                 teamTwo.setTeamPoint(teamTwo.getTeamPoint() + 1);
             }
@@ -360,68 +255,132 @@ public class BracketService {
         }
     }
 
-    private List<GroupDTO> groupMatchesByGroupName(List<Match> matches) {
-        Map<String, List<Match>> groupedMatches = matches.stream()
-                .collect(Collectors.groupingBy(Match::getGroupName));
+//    private Map<String, List<GroupDTO>> groupMatchesByGroupName(List<Match> matches) {
+//        Map<String, List<Match>> groupedMatches = matches.stream()
+//                .collect(Collectors.groupingBy(Match::getGroupName));
+//
+//        Map<String, List<GroupDTO>> result = new HashMap<>();
+//
+//        for (Map.Entry<String, List<Match>> entry : groupedMatches.entrySet()) {
+//            GroupDTO groupDTO = new GroupDTO();
+//            groupDTO.setGroup(entry.getKey());
+//            groupDTO.setTeams(calculateStandings(entry.getValue()));
+//
+//            result.computeIfAbsent(entry.getKey(), k -> new ArrayList<>()).add(groupDTO);
+//        }
+//
+//        return result;
+//    }
 
-        List<GroupDTO> groupDTOs = new ArrayList<>();
-
-        for (Map.Entry<String, List<Match>> entry : groupedMatches.entrySet()) {
-            GroupDTO groupDTO = new GroupDTO();
-            groupDTO.setGroupName(entry.getKey());
-            groupDTO.setMatches(entry.getValue().stream()
-                    .map(this::convertToBracketDTO)
-                    .collect(Collectors.toList()));
-            groupDTO.setStandings(calculateStandings(entry.getValue().stream()
-                    .filter(match -> match.getStatus() == MatchStatus.PAST)
-                    .collect(Collectors.toList())));
-            groupDTOs.add(groupDTO);
-        }
-
-        groupDTOs.sort(Comparator.comparing(GroupDTO::getGroupName));
-
-        return groupDTOs;
-    }
-
-
-
-    private List<TeamStandingDTO> calculateStandings(List<Match> matches) {
+    private List<TeamStandingDTO> calculateStandings(List<Team> teamsInGroup, List<Match> allMatches) {
         Map<Long, TeamStandingDTO> standings = new HashMap<>();
 
-        for (Match match : matches) {
+        for (Team team : teamsInGroup) {
+            standings.put(team.getTeamId(), new TeamStandingDTO(team.getTeamId(), team.getDepartment()));
+        }
+
+        for (Match match : allMatches) {
             List<MatchTeam> matchTeams = match.getMatchTeams();
             if (matchTeams.size() >= 2) {
-                Team teamOne = matchTeams.get(0).getTeam();
-                Team teamTwo = matchTeams.get(1).getTeam();
+                MatchTeam teamOne = matchTeams.get(0);
+                MatchTeam teamTwo = matchTeams.get(1);
 
-                standings.putIfAbsent(teamOne.getTeamId(), new TeamStandingDTO(teamOne.getTeamName()));
-                standings.putIfAbsent(teamTwo.getTeamId(), new TeamStandingDTO(teamTwo.getTeamName()));
+                if (standings.containsKey(teamOne.getTeam().getTeamId()) &&
+                        standings.containsKey(teamTwo.getTeam().getTeamId())) {
+                    TeamStandingDTO standingOne = standings.get(teamOne.getTeam().getTeamId());
+                    TeamStandingDTO standingTwo = standings.get(teamTwo.getTeam().getTeamId());
 
-                TeamStandingDTO teamOneStanding = standings.get(teamOne.getTeamId());
-                TeamStandingDTO teamTwoStanding = standings.get(teamTwo.getTeamId());
+                    standingOne.addMatchId(match.getMatchId());
+                    standingTwo.addMatchId(match.getMatchId());
 
-                teamOneStanding.incrementPlayed();
-                teamTwoStanding.incrementPlayed();
-
-                if (matchTeams.get(0).getScore() > matchTeams.get(1).getScore()) {
-                    teamOneStanding.incrementWon();
-                    teamTwoStanding.incrementLost();
-                    teamOneStanding.addPoints(3);
-                } else if (matchTeams.get(0).getScore() < matchTeams.get(1).getScore()) {
-                    teamTwoStanding.incrementWon();
-                    teamOneStanding.incrementLost();
-                    teamTwoStanding.addPoints(3);
-                } else {
-                    teamOneStanding.incrementDrawn();
-                    teamTwoStanding.incrementDrawn();
-                    teamOneStanding.addPoints(1);
-                    teamTwoStanding.addPoints(1);
+                    if (match.getStatus() == MatchStatus.PAST) {
+                        updateStandings(teamOne, teamTwo, standingOne, standingTwo);
+                    }
                 }
             }
         }
 
-        return new ArrayList<>(standings.values()).stream()
-                .sorted(Comparator.comparingInt(TeamStandingDTO::getPoints).reversed())
-                .collect(Collectors.toList());
+        return new ArrayList<>(standings.values());
+    }
+
+
+    private void updateStandings(MatchTeam teamOne, MatchTeam teamTwo,
+                                 TeamStandingDTO standingOne, TeamStandingDTO standingTwo) {
+        int scoreOne = teamOne.getScore();
+        int scoreTwo = teamTwo.getScore();
+
+        if (scoreOne > scoreTwo) {
+            standingOne.setWin(standingOne.getWin() + 1);
+            standingTwo.setLose(standingTwo.getLose() + 1);
+        } else if (scoreOne < scoreTwo) {
+            standingTwo.setWin(standingTwo.getWin() + 1);
+            standingOne.setLose(standingOne.getLose() + 1);
+        } else {
+            standingOne.setDraw(standingOne.getDraw() + 1);
+            standingTwo.setDraw(standingTwo.getDraw() + 1);
+        }
+
+        standingOne.updatePoints();
+        standingTwo.updatePoints();
+    }
+
+    private TournamentMatchDTO convertToTournamentMatchDTO(Match match) {
+        TournamentMatchDTO dto = new TournamentMatchDTO();
+        dto.setId(match.getMatchId());
+        dto.setName("Round " + match.getRound() + " - Match " + match.getMatchId());
+        dto.setNextMatchId(null); // 이 부분은 토너먼트 구조에 따라 별도로 설정해야 합니다
+        dto.setTournamentRoundText("Round " + match.getRound());
+        dto.setStartTime(match.getDate().atTime(match.getStartTime()).toString());
+        dto.setState(match.getStatus().toString());
+
+        List<ParticipantDTO> participants = new ArrayList<>();
+        for (MatchTeam matchTeam : match.getMatchTeams()) {
+            ParticipantDTO participant = new ParticipantDTO();
+            participant.setId(matchTeam.getTeam().getTeamId().toString());
+            participant.setResultText(matchTeam.getScore().toString());
+            participant.setIsWinner(determineWinner(match, matchTeam));
+            participant.setStatus(match.getStatus().toString());
+            participant.setName(String.valueOf(matchTeam.getTeam().getDepartment()));
+            participant.setImage("userImage"); // 실제 이미지 URL로 대체 필요
+            participants.add(participant);
+        }
+        dto.setParticipants(participants);
+
+        return dto;
+    }
+
+    private boolean determineWinner(Match match, MatchTeam matchTeam) {
+        return match.getMatchTeams().stream()
+                .max(Comparator.comparing(MatchTeam::getScore))
+                .map(winner -> winner.equals(matchTeam))
+                .orElse(false);
+    }
+
+    private BracketDTO convertToBracketDTO(Match match) {
+        BracketDTO bracketDTO = new BracketDTO();
+        bracketDTO.setMatchId(match.getMatchId());
+        bracketDTO.setSports(match.getSport());
+        bracketDTO.setMatchDate(match.getDate());
+        bracketDTO.setStartTime(match.getStartTime());
+        bracketDTO.setMatchType(match.getMatchType());
+        bracketDTO.setMatchStatus(match.getStatus());
+        bracketDTO.setGroupName(match.getGroupName());
+        bracketDTO.setRound(match.getRound());
+
+        List<MatchTeam> matchTeams = match.getMatchTeams();
+        if (matchTeams != null && !matchTeams.isEmpty()) {
+            if (matchTeams.size() >= 1) {
+                MatchTeam teamOne = matchTeams.get(0);
+                bracketDTO.setTeamOneName(teamOne.getTeam().getDepartment());
+                bracketDTO.setTeamOneScore(teamOne.getScore());
+            }
+            if (matchTeams.size() >= 2) {
+                MatchTeam teamTwo = matchTeams.get(1);
+                bracketDTO.setTeamTwoName(teamTwo.getTeam().getDepartment());
+                bracketDTO.setTeamTwoScore(teamTwo.getScore());
+            }
+        }
+
+        return bracketDTO;
     }
 }

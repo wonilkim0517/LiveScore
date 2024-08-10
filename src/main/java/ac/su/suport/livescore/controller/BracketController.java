@@ -2,14 +2,15 @@ package ac.su.suport.livescore.controller;
 
 import ac.su.suport.livescore.dto.BracketDTO;
 import ac.su.suport.livescore.dto.GroupDTO;
+import ac.su.suport.livescore.dto.TournamentMatchDTO;
 import ac.su.suport.livescore.service.BracketService;
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequiredArgsConstructor
@@ -18,40 +19,22 @@ public class BracketController {
 
     private final BracketService bracketService;
 
-    @GetMapping("/league")
-    public ResponseEntity<List<GroupDTO>> getSoccerLeagueBrackets() {
-        List<GroupDTO> groupDTOs = bracketService.getSportLeagueBrackets("Soccer");
-        return new ResponseEntity<>(groupDTOs, HttpStatus.OK);
-    }
-
     @GetMapping("/league/{sport}")
-    public ResponseEntity<List<GroupDTO>> getSportLeagueBrackets(@PathVariable("sport") String sport) {
-        List<GroupDTO> groupDTOs = bracketService.getSportLeagueBrackets(sport);
-        return new ResponseEntity<>(groupDTOs, HttpStatus.OK);
-    }
-
-    @GetMapping("/tournament")
-    public ResponseEntity<List<BracketDTO>> getSoccerTournamentBrackets() {
-        List<BracketDTO> bracketDTOs = bracketService.getSportTournamentBrackets("SOCCER");
-        return new ResponseEntity<>(bracketDTOs, HttpStatus.OK);
+    public ResponseEntity<Map<String, List<GroupDTO>>> getSportLeagueBrackets(@PathVariable("sport") String sport) {
+        Map<String, List<GroupDTO>> leagueData = bracketService.getSportLeagueBrackets(sport);
+        return new ResponseEntity<>(leagueData, HttpStatus.OK);
     }
 
     @GetMapping("/tournament/{sport}")
-    public ResponseEntity<List<BracketDTO>> getSportTournamentBrackets(@PathVariable("sport") String sport) {
-        List<BracketDTO> bracketDTOs = bracketService.getSportTournamentBrackets(sport);
-        return new ResponseEntity<>(bracketDTOs, HttpStatus.OK);
+    public ResponseEntity<List<TournamentMatchDTO>> getSportTournamentBrackets(@PathVariable("sport") String sport) {
+        List<TournamentMatchDTO> tournamentData = bracketService.getSportTournamentBrackets(sport);
+        return new ResponseEntity<>(tournamentData, HttpStatus.OK);
     }
 
     @PostMapping("/league")
-    public ResponseEntity<?> createLeagueBracket(@RequestBody BracketDTO bracketDTO) {
-        try {
-            BracketDTO createdBracket = bracketService.createLeagueBracket(bracketDTO);
-            return new ResponseEntity<>(createdBracket, HttpStatus.CREATED);
-        } catch (EntityNotFoundException e) {
-            return new ResponseEntity<>(e.getMessage(), HttpStatus.NOT_FOUND);
-        } catch (Exception e) {
-            return new ResponseEntity<>("An error occurred: " + e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
-        }
+    public ResponseEntity<BracketDTO> createLeagueBracket(@RequestBody BracketDTO bracketDTO) {
+        BracketDTO createdBracket = bracketService.createLeagueBracket(bracketDTO);
+        return new ResponseEntity<>(createdBracket, HttpStatus.CREATED);
     }
 
     @PutMapping("/league/{id}")
@@ -82,5 +65,15 @@ public class BracketController {
     public ResponseEntity<Void> deleteTournamentBracket(@PathVariable Long id) {
         bracketService.deleteTournamentBracket(id);
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
+    }
+
+    @GetMapping("/league/{sport}/{group}")
+    public ResponseEntity<List<GroupDTO>> getLeagueBracketsByGroup(@PathVariable String sport, @PathVariable String group) {
+        Map<String, List<GroupDTO>> allGroups = bracketService.getSportLeagueBrackets(sport);
+        List<GroupDTO> groupData = allGroups.get(group);
+        if (groupData == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(groupData);
     }
 }

@@ -1,5 +1,6 @@
 package ac.su.suport.livescore.dto;
 
+import ac.su.suport.livescore.constant.DepartmentEnum;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -15,7 +16,7 @@ public class LineupGroupDTO {
     @NoArgsConstructor
     public static class Request {
         private String teamName;
-        private String department;
+        private DepartmentEnum department;
         private List<PlayerDTO.Request> lineup;
     }
 
@@ -25,7 +26,9 @@ public class LineupGroupDTO {
     @NoArgsConstructor
     public static class Response {
         private String teamName;
-        private String department;
+        private DepartmentEnum department;
         private List<PlayerDTO.Response> lineup;
+
+
     }
 }

@@ -1,5 +1,6 @@
 package ac.su.suport.livescore.service;
 
+import ac.su.suport.livescore.constant.DepartmentEnum;
 import ac.su.suport.livescore.domain.Lineup;
 import ac.su.suport.livescore.domain.MatchTeam;
 import ac.su.suport.livescore.domain.Team;
@@ -50,7 +51,7 @@ public class LineupService {
         // 팀 이름과 부서 정보를 가져오기 위해 첫 번째 Lineup 객체에서 정보 추출
         Team team = lineups.get(0).getTeam();
         String teamName = team.getTeamName();
-        String department = team.getDepartment();
+        DepartmentEnum department = team.getDepartment();
 
         // 그룹화된 데이터 생성
         List<PlayerDTO.Response> playerDTOs = lineups.stream()
@@ -86,7 +87,7 @@ public class LineupService {
         LineupDTO.Response dto = new LineupDTO.Response();
         dto.setLineupId(lineup.getLineupId());
         dto.setTeamName(lineup.getTeam().getTeamName());
-        dto.setDepartment(lineup.getTeam().getDepartment());
+        dto.setDepartment(String.valueOf(lineup.getTeam().getDepartment()));
         dto.setPlayerName(lineup.getPlayerName());
         dto.setPosition(lineup.getPosition());
         return dto;

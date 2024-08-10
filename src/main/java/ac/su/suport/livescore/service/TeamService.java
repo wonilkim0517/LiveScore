@@ -1,5 +1,6 @@
 package ac.su.suport.livescore.service;
 
+import ac.su.suport.livescore.constant.DepartmentEnum;
 import ac.su.suport.livescore.domain.Team;
 import ac.su.suport.livescore.dto.TeamDTO;
 import ac.su.suport.livescore.dto.TeamDTO.Request;
@@ -50,7 +51,7 @@ public class TeamService {
     public Optional<TeamDTO.Request> updateTeam(Long id, TeamDTO.Request teamDTO) {
         return teamRepository.findById(id).map(existingTeam -> {
             existingTeam.setTeamName(teamDTO.getTeamName());
-            existingTeam.setDepartment(teamDTO.getDepartment());
+            existingTeam.setDepartment(DepartmentEnum.valueOf(String.valueOf(teamDTO.getDepartment())));
             existingTeam.setTeamPoint(teamDTO.getTeamPoint());
             Team updatedTeam = teamRepository.save(existingTeam);
             return convertToRequestDTO(updatedTeam);
@@ -61,7 +62,7 @@ public class TeamService {
     private Team convertToEntity(TeamDTO.Request teamDTO) {
         Team team = new Team();
         team.setTeamName(teamDTO.getTeamName());
-        team.setDepartment(teamDTO.getDepartment());
+        team.setDepartment(DepartmentEnum.valueOf(String.valueOf(teamDTO.getDepartment())));
         team.setTeamPoint(teamDTO.getTeamPoint());
         return team;
     }
