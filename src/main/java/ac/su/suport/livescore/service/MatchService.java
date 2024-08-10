@@ -178,8 +178,8 @@ public class MatchService {
             MatchTeam team2 = matchTeams.get(1);
             dto.setTeamName1(team1.getTeam().getTeamName());
             dto.setTeamName2(team2.getTeam().getTeamName());
-            dto.setDepartment1(team1.getTeam().getDepartment());
-            dto.setDepartment2(team2.getTeam().getDepartment());
+            dto.setDepartment1(String.valueOf(team1.getTeam().getDepartment()));
+            dto.setDepartment2(String.valueOf(team2.getTeam().getDepartment()));
             dto.setTeamScore1(team1.getScore() != null ? team1.getScore() : 0);
             dto.setTeamScore2(team2.getScore() != null ? team2.getScore() : 0);
         }

@@ -53,9 +53,9 @@ public class CommentService {
         });
     }
 
-    public void deleteComment(Long commentId) {
-        commentRepository.deleteById(commentId);
-    }
+//    public void deleteComment(Long commentId) {
+//        commentRepository.deleteById(commentId);
+//    }
 
     // 댓글 삭제 메소드
     public boolean deleteComment(DeleteCommentRequest request) {

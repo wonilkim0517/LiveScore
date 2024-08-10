@@ -1,4 +1,4 @@
-//package ac.su.suport.livescore.handler;
+package ac.su.suport.livescore.handler;//package ac.su.suport.livescore.handler;
 //
 //import ac.su.suport.livescore.domain.User;
 //import jakarta.servlet.http.HttpServletRequest;
