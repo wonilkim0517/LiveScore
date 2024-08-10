@@ -1,5 +1,6 @@
 package ac.su.suport.livescore.domain;
 
+import ac.su.suport.livescore.constant.DepartmentEnum;
 import ac.su.suport.livescore.domain.Lineup;
 import ac.su.suport.livescore.domain.MatchTeam;
 import jakarta.persistence.*;
@@ -7,6 +8,8 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
+import org.hibernate.annotations.DynamicUpdate;
+
 import java.util.List;
 
 @Entity
@@ -14,6 +17,7 @@ import java.util.List;
 @Getter @Setter
 @NoArgsConstructor
 @AllArgsConstructor
+@DynamicUpdate
 public class Team {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -23,8 +27,9 @@ public class Team {
     @Column(name = "team_name")
     private String teamName;
 
-    @Column(name = "department")
-    private String department;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "department",length = 50)
+    private DepartmentEnum department;
 
     @Column(name = "team_point")
     private Integer teamPoint;

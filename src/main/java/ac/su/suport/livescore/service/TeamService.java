@@ -1,5 +1,6 @@
 package ac.su.suport.livescore.service;
 
+import ac.su.suport.livescore.constant.DepartmentEnum;
 import ac.su.suport.livescore.domain.Team;
 import ac.su.suport.livescore.dto.TeamDTO;
 import ac.su.suport.livescore.dto.TeamDTO.Request;
@@ -40,17 +41,17 @@ public class TeamService {
     }
 
     // 팀 생성
-    public TeamDTO.Request createTeam(TeamDTO.Request teamDTO) {
+    public Request createTeam(Request teamDTO) {
         Team team = convertToEntity(teamDTO);
         Team savedTeam = teamRepository.save(team);
         return convertToRequestDTO(savedTeam);
     }
 
     // 팀 정보 수정
-    public Optional<TeamDTO.Request> updateTeam(Long id, TeamDTO.Request teamDTO) {
+    public Optional<Request> updateTeam(Long id, Request teamDTO) {
         return teamRepository.findById(id).map(existingTeam -> {
             existingTeam.setTeamName(teamDTO.getTeamName());
-            existingTeam.setDepartment(teamDTO.getDepartment());
+            existingTeam.setDepartment(DepartmentEnum.valueOf(String.valueOf(teamDTO.getDepartment())));
             existingTeam.setTeamPoint(teamDTO.getTeamPoint());
             Team updatedTeam = teamRepository.save(existingTeam);
             return convertToRequestDTO(updatedTeam);
@@ -58,17 +59,17 @@ public class TeamService {
     }
 
     // TeamDTO.Request -> Team 변환
-    private Team convertToEntity(TeamDTO.Request teamDTO) {
+    private Team convertToEntity(Request teamDTO) {
         Team team = new Team();
         team.setTeamName(teamDTO.getTeamName());
-        team.setDepartment(teamDTO.getDepartment());
+        team.setDepartment(DepartmentEnum.valueOf(String.valueOf(teamDTO.getDepartment())));
         team.setTeamPoint(teamDTO.getTeamPoint());
         return team;
     }
 
     // Team -> TeamDTO.Request 변환
-    private TeamDTO.Request convertToRequestDTO(Team team) {
-        return new TeamDTO.Request(
+    private Request convertToRequestDTO(Team team) {
+        return new Request(
                 team.getTeamName(),
                 team.getDepartment(),
                 team.getTeamPoint()

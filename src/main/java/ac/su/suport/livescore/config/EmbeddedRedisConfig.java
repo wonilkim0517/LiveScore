@@ -1,4 +1,4 @@
-//package ac.su.suport.livescore.config;
+package ac.su.suport.livescore.config;//package ac.su.suport.livescore.config;
 //
 //import jakarta.annotation.PostConstruct;
 //import jakarta.annotation.PreDestroy;

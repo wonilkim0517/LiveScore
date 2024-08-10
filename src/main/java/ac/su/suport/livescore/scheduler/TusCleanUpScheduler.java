@@ -1,4 +1,4 @@
-//package ac.su.suport.livescore.scheduler;
+package ac.su.suport.livescore.scheduler;//package ac.su.suport.livescore.scheduler;
 //
 //import lombok.RequiredArgsConstructor;
 //import lombok.extern.slf4j.Slf4j;

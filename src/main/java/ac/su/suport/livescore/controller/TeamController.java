@@ -35,15 +35,15 @@ public class TeamController {
 
     // 새로운 팀 생성
     @PostMapping
-    public ResponseEntity<TeamDTO.Request> createTeam(@RequestBody TeamDTO.Request teamDTO) {
-        TeamDTO.Request createdTeam = teamService.createTeam(teamDTO);
+    public ResponseEntity<Request> createTeam(@RequestBody Request teamDTO) {
+        Request createdTeam = teamService.createTeam(teamDTO);
         return new ResponseEntity<>(createdTeam, HttpStatus.CREATED);
     }
 
     // 팀 수정
     @PutMapping("/{id}")
-    public ResponseEntity<TeamDTO.Request> updateTeam(@PathVariable Long id, @RequestBody TeamDTO.Request teamDTO) {
-        Optional<TeamDTO .Request> updatedTeam = teamService.updateTeam(id, teamDTO);
+    public ResponseEntity<Request> updateTeam(@PathVariable Long id, @RequestBody Request teamDTO) {
+        Optional<Request> updatedTeam = teamService.updateTeam(id, teamDTO);
         return updatedTeam.map(team -> new ResponseEntity<>(team, HttpStatus.OK))
                 .orElseGet(() -> new ResponseEntity<>(HttpStatus.NOT_FOUND));
     }

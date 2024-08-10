@@ -1,5 +1,6 @@
 package ac.su.suport.livescore.service;
 
+import ac.su.suport.livescore.constant.DepartmentEnum;
 import ac.su.suport.livescore.constant.MatchStatus;
 import ac.su.suport.livescore.domain.Match;
 import ac.su.suport.livescore.domain.MatchTeam;
@@ -38,8 +39,8 @@ public class MatchTeamService {
         Team team2 = Optional.ofNullable(matchTeams.get(1).getTeam())
                 .orElseThrow(() -> new IllegalStateException("Team 2 is null"));
 
-        String team1Department = team1.getDepartment();
-        String team2Department = team2.getDepartment();
+        DepartmentEnum team1Department = team1.getDepartment();
+        DepartmentEnum team2Department = team2.getDepartment();
 
         int team1Wins = 0, team1Draws = 0, team1Losses = 0;
         int team2Wins = 0, team2Draws = 0, team2Losses = 0;
