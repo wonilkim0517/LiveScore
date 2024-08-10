@@ -54,10 +54,7 @@ jobs:
           echo "${{ secrets.EC2_SSH_KEY }}" > $HOME/.ssh/id_rsa
           chmod 600 $HOME/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.EC2_IP }} >> $HOME/.ssh/known_hosts
-      - name: 디버깅 로그
-        run: |
-          echo "다운로드 경로 확인:"
-          ls -al $GITHUB_WORKSPACE/spring-app
+
       - name: Deploy to EC2
         env:
           DB_URL: ${{ secrets.DB_URL }}
@@ -66,12 +63,8 @@ jobs:
         run: |
           scp -i $HOME/.ssh/id_rsa -o StrictHostKeyChecking=no $GITHUB_WORKSPACE/spring-app/LiveScore-0.0.1-SNAPSHOT.jar ec2-user@${{ secrets.EC2_IP }}:/home/ec2-user/
           ssh -i $HOME/.ssh/id_rsa -o StrictHostKeyChecking=no ec2-user@${{ secrets.EC2_IP }} <<'EOF'
-            export DB_URL=${{ secrets.DB_URL }}
-            export DB_USERNAME=${{ secrets.DB_USERNAME }}
-            export DB_PASSWORD=${{ secrets.DB_PASSWORD }}
-            echo "DB_URL: ${DB_URL}"
-            echo "DB_USERNAME: ${DB_USERNAME}"
-            echo "DB_PASSWORD: ${DB_PASSWORD}"
+            chmod +x /home/ec2-user/LiveScore-0.0.1-SNAPSHOT.jar
             pkill -f LiveScore-0.0.1-SNAPSHOT.jar || true
-            nohup java -jar /home/ec2-user/LiveScore-0.0.1-SNAPSHOT.jar --spring.profiles.active=prod > /dev/null 2>&1 &
+            nohup java -jar /home/ec2-user/LiveScore-0.0.1-SNAPSHOT.jar --spring.profiles.active=prod > /home/ec2-user/app.log 2>&1 &
+            echo "JAR 파일이 백그라운드에서 실행되고 있습니다."
           EOF
