@@ -51,7 +51,7 @@ jobs:
       - name: SSH 키 설정
         run: |
           mkdir -p $HOME/.ssh
-          echo "${{ secrets.EC2_SSH_KEY }}" > $HOME/.ssh/livescore.pem
+          echo "${{ secrets.EC2_SSH_KEY }}" > $HOME/.ssh/id_rsa
           chmod 600 $HOME/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.EC2_IP }} >> $HOME/.ssh/known_hosts
       - name: 디버깅 로그
@@ -64,8 +64,8 @@ jobs:
           DB_USERNAME: ${{ secrets.DB_USERNAME }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         run: |
-          scp -i $HOME/.ssh/livescore.pem -o StrictHostKeyChecking=no $GITHUB_WORKSPACE/spring-app/LiveScore-Final-0.0.1-SNAPSHOT.jar ec2-user@${{ secrets.EC2_IP }}:/home/ec2-user/
-          ssh -i $HOME/.ssh/livescore.pem -o StrictHostKeyChecking=no ec2-user@${{ secrets.EC2_IP }} <<'EOF'
+          scp -i $HOME/.ssh/id_rsa -o StrictHostKeyChecking=no $GITHUB_WORKSPACE/spring-app/LiveScore-Final-0.0.1-SNAPSHOT.jar ec2-user@${{ secrets.EC2_IP }}:/home/ec2-user/
+          ssh -i $HOME/.ssh/id_rsa -o StrictHostKeyChecking=no ec2-user@${{ secrets.EC2_IP }} <<'EOF'
             export DB_URL=${{ secrets.DB_URL }}
             export DB_USERNAME=${{ secrets.DB_USERNAME }}
             export DB_PASSWORD=${{ secrets.DB_PASSWORD }}
