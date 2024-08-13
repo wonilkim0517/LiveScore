@@ -13,10 +13,11 @@ import java.util.Optional;
 @RequiredArgsConstructor
 @Service
 public class ChatRoomRepository {
+
     // Redis CacheKeys
-    private static final String CHAT_ROOMS = "CHAT_ROOM"; // 채팅룸 저장
-    public static final String USER_COUNT = "USER_COUNT"; // 채팅룸에 입장한 클라이언트수 저장
-    public static final String ENTER_INFO = "ENTER_INFO"; // 채팅룸에 입장한 클라이언트의 sessionId와 채팅룸 id를 맵핑한 정보 저장
+    private static final String CHAT_ROOMS = "CHAT_ROOM";
+    public static final String USER_COUNT = "USER_COUNT";
+    public static final String ENTER_INFO = "ENTER_INFO";
 
     @Resource(name = "redisTemplate")
     private HashOperations<String, String, ChatRoom> hashOpsChatRoom;
@@ -24,6 +25,12 @@ public class ChatRoomRepository {
     private HashOperations<String, String, String> hashOpsEnterInfo;
     @Resource(name = "redisTemplate")
     private ValueOperations<String, String> valueOps;
+
+    // 유저가 이미 특정 채팅방에 구독되어 있는지 확인
+    public boolean isUserAlreadySubscribed(String sessionId, String roomId) {
+        String existingRoomId = hashOpsEnterInfo.get(ENTER_INFO, sessionId);
+        return roomId.equals(existingRoomId);
+    }
 
     // 모든 채팅방 조회
     public List<ChatRoom> findAllRoom() {
@@ -35,7 +42,7 @@ public class ChatRoomRepository {
         return hashOpsChatRoom.get(CHAT_ROOMS, id);
     }
 
-    // 채팅방 생성 : 서버간 채팅방 공유를 위해 redis hash에 저장한다.
+    // 채팅방 생성
     public ChatRoom createChatRoom(String name) {
         ChatRoom chatRoom = ChatRoom.create(name);
         hashOpsChatRoom.put(CHAT_ROOMS, chatRoom.getRoomId(), chatRoom);

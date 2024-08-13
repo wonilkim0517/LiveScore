@@ -17,7 +17,7 @@ public class CorsConfig {
                         .allowedOrigins("https://suportscore.site/", "https://www.suportscore.site/", "http://localhost:3000/")
                         .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                         .allowedHeaders("*")
-                        .allowCredentials(false);
+                        .allowCredentials(true);
             }
         };
     }

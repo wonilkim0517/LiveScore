@@ -8,23 +8,24 @@ import lombok.Setter;
 @Setter
 public class ChatMessage {
 
-    @Builder
-    public ChatMessage(MessageType type, String roomId, String sender, String message, long userCount) {
-        this.type = type;
-        this.roomId = roomId;
-        this.sender = sender;
-        this.message = message;
-        this.userCount = userCount;
-    }
-
     public enum MessageType {
-        // 메세지 타입 : 입장, 채팅, 퇴장
         JOIN, TALK, QUIT
     }
 
-    private MessageType type; // 메세지 타입
-    private String roomId; // 방번호
-    private String sender; // 메세지 보낸 사람
-    private String message; // 메세지
+    private MessageType type; // 메시지 타입
+    private String roomId; // 방 번호
+    private String sender; // 메시지 보낸 사람 (username)
+    private String nickname; // 보낸 사람의 닉네임
+    private String message; // 메시지 내용
     private long userCount; // 현재 접속자 수
+
+    @Builder
+    public ChatMessage(MessageType type, String roomId, String sender, String nickname, String message, long userCount) {
+        this.type = type;
+        this.roomId = roomId;
+        this.sender = sender;
+        this.nickname = nickname;
+        this.message = message;
+        this.userCount = userCount;
+    }
 }
