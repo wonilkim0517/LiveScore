@@ -23,8 +23,11 @@ import java.util.stream.Collectors;
 public class BracketService {
 
     private final MatchRepository matchRepository;
-    private final TeamRepository teamRepository;
     private final MatchTeamRepository matchTeamRepository;
+    private final TeamRepository teamRepository;
+
+    // 팀 ID를 키로 하고 TeamStandingDTO를 값으로 하는 Map을 사용하여 팀 순위 정보를 저장
+    private final Map<Long, TeamStandingDTO> teamStandings = new HashMap<>();
 
     public Map<String, List<GroupDTO>> getSportLeagueBrackets(String sport) {
         List<Match> matches = matchRepository.findBySportAndMatchType(sport, MatchType.LEAGUE);
@@ -43,17 +46,6 @@ public class BracketService {
         }
 
         return result;
-    }
-    private Map<String, List<Team>> groupTeamsByGroup(List<Match> matches) {
-        Map<String, List<Team>> groupedTeams = new HashMap<>();
-        for (Match match : matches) {
-            String groupName = match.getGroupName();
-            for (MatchTeam matchTeam : match.getMatchTeams()) {
-                Team team = matchTeam.getTeam();
-                groupedTeams.computeIfAbsent(groupName, k -> new ArrayList<>()).add(team);
-            }
-        }
-        return groupedTeams;
     }
 
     public List<TournamentMatchDTO> getSportTournamentBrackets(String sport) {
@@ -93,6 +85,8 @@ public class BracketService {
     @Transactional
     public BracketDTO updateLeagueBracket(Long id, BracketDTO bracketDTO) {
         Match match = matchRepository.findById(id).orElseThrow(() -> new RuntimeException("Match not found"));
+        MatchStatus oldStatus = match.getStatus();
+
         updateMatchFromDTO(match, bracketDTO);
 
         List<MatchTeam> matchTeams = match.getMatchTeams();
@@ -106,33 +100,14 @@ public class BracketService {
             matchTeamRepository.save(teamOne);
             matchTeamRepository.save(teamTwo);
 
-            if (match.getStatus() == MatchStatus.PAST) {
-                updateTeamStandings(teamOne, teamTwo);
+            // Only update standings if the status changed to PAST
+            if (oldStatus != MatchStatus.PAST && match.getStatus() == MatchStatus.PAST) {
+                updateLeagueStandings(teamOne, teamTwo);
             }
         }
 
         match = matchRepository.save(match);
         return convertToBracketDTO(match);
-    }
-
-    private void updateTeamStandings(MatchTeam teamOne, MatchTeam teamTwo) {
-        Team team1 = teamOne.getTeam();
-        Team team2 = teamTwo.getTeam();
-
-        int scoreOne = teamOne.getScore();
-        int scoreTwo = teamTwo.getScore();
-
-        if (scoreOne > scoreTwo) {
-            team1.setTeamPoint(team1.getTeamPoint() + 3);
-        } else if (scoreOne < scoreTwo) {
-            team2.setTeamPoint(team2.getTeamPoint() + 3);
-        } else {
-            team1.setTeamPoint(team1.getTeamPoint() + 1);
-            team2.setTeamPoint(team2.getTeamPoint() + 1);
-        }
-
-        teamRepository.save(team1);
-        teamRepository.save(team2);
     }
 
     public void deleteLeagueBracket(Long id) {
@@ -165,6 +140,71 @@ public class BracketService {
         matchRepository.delete(match);
     }
 
+    private Map<String, List<Team>> groupTeamsByGroup(List<Match> matches) {
+        Map<String, List<Team>> groupedTeams = new HashMap<>();
+        for (Match match : matches) {
+            String groupName = match.getGroupName();
+            for (MatchTeam matchTeam : match.getMatchTeams()) {
+                Team team = matchTeam.getTeam();
+                groupedTeams.computeIfAbsent(groupName, k -> new ArrayList<>()).add(team);
+            }
+        }
+        return groupedTeams;
+    }
+
+    private void updateLeagueStandings(MatchTeam teamOne, MatchTeam teamTwo) {
+        int scoreOne = teamOne.getScore();
+        int scoreTwo = teamTwo.getScore();
+
+        TeamStandingDTO standingOne = teamStandings.computeIfAbsent(teamOne.getTeam().getTeamId(),
+                k -> new TeamStandingDTO(teamOne.getTeam().getTeamId(), teamOne.getTeam().getDepartment()));
+        TeamStandingDTO standingTwo = teamStandings.computeIfAbsent(teamTwo.getTeam().getTeamId(),
+                k -> new TeamStandingDTO(teamTwo.getTeam().getTeamId(), teamTwo.getTeam().getDepartment()));
+
+        if (scoreOne > scoreTwo) {
+            updateTeamStanding(standingOne, 1, 0, 0);
+            updateTeamStanding(standingTwo, 0, 0, 1);
+        } else if (scoreOne < scoreTwo) {
+            updateTeamStanding(standingOne, 0, 0, 1);
+            updateTeamStanding(standingTwo, 1, 0, 0);
+        } else {
+            updateTeamStanding(standingOne, 0, 1, 0);
+            updateTeamStanding(standingTwo, 0, 1, 0);
+        }
+    }
+
+    private void updateTeamStanding(TeamStandingDTO standing, int wins, int draws, int losses) {
+        standing.setWin(standing.getWin() + wins);
+        standing.setDraw(standing.getDraw() + draws);
+        standing.setLose(standing.getLose() + losses);
+        standing.updatePoints();
+    }
+
+    public List<TeamStandingDTO> getLeagueStandings(String sport, String groupName) {
+        List<Match> matches = matchRepository.findBySportAndGroupNameAndStatus(sport, groupName, MatchStatus.PAST);
+        Map<Long, TeamStandingDTO> standings = new HashMap<>();
+
+        for (Match match : matches) {
+            for (MatchTeam matchTeam : match.getMatchTeams()) {
+                Team team = matchTeam.getTeam();
+                standings.computeIfAbsent(team.getTeamId(),
+                        k -> new TeamStandingDTO(team.getTeamId(), team.getDepartment()));
+            }
+            updateStandingsForMatch(match);
+        }
+
+        return new ArrayList<>(standings.values());
+    }
+
+    private void updateStandingsForMatch(Match match) {
+        List<MatchTeam> matchTeams = match.getMatchTeams();
+        if (matchTeams.size() >= 2) {
+            MatchTeam teamOne = matchTeams.get(0);
+            MatchTeam teamTwo = matchTeams.get(1);
+            updateLeagueStandings(teamOne, teamTwo);
+        }
+    }
+
     private Match convertToMatch(BracketDTO bracketDTO) {
         Match match = new Match();
         updateMatchFromDTO(match, bracketDTO);
@@ -181,13 +221,10 @@ public class BracketService {
         match.setRound(bracketDTO.getRound());
     }
 
-
-
     private void saveMatchTeams(Match match, BracketDTO bracketDTO) {
         Team teamOne = findOrCreateTeam(bracketDTO.getTeamOneName());
         Team teamTwo = findOrCreateTeam(bracketDTO.getTeamTwoName());
 
-        // 팀을 먼저 저장합니다.
         teamOne = teamRepository.save(teamOne);
         teamTwo = teamRepository.save(teamTwo);
 
@@ -197,7 +234,6 @@ public class BracketService {
         matchTeamRepository.save(matchTeamOne);
         matchTeamRepository.save(matchTeamTwo);
     }
-
 
     private Team findOrCreateTeam(DepartmentEnum department) {
         return teamRepository.findByDepartment(department)
@@ -210,6 +246,7 @@ public class BracketService {
                     return teamRepository.save(newTeam);
                 });
     }
+
     private void updateMatchTeams(Match match, BracketDTO bracketDTO) {
         List<MatchTeam> matchTeams = match.getMatchTeams();
 
@@ -237,40 +274,9 @@ public class BracketService {
         if (matchTeams.size() >= 2) {
             MatchTeam matchTeamOne = matchTeams.get(0);
             MatchTeam matchTeamTwo = matchTeams.get(1);
-
-            Team teamOne = matchTeamOne.getTeam();
-            Team teamTwo = matchTeamTwo.getTeam();
-
-            if (matchTeamOne.getScore() > matchTeamTwo.getScore()) {
-                teamOne.setTeamPoint(teamOne.getTeamPoint() + 3);
-            } else if (matchTeamOne.getScore() < matchTeamTwo.getScore()) {
-                teamTwo.setTeamPoint(teamTwo.getTeamPoint() + 3);
-            } else {
-                teamOne.setTeamPoint(teamOne.getTeamPoint() + 1);
-                teamTwo.setTeamPoint(teamTwo.getTeamPoint() + 1);
-            }
-
-            teamRepository.save(teamOne);
-            teamRepository.save(teamTwo);
+            updateLeagueStandings(matchTeamOne, matchTeamTwo);
         }
     }
-
-//    private Map<String, List<GroupDTO>> groupMatchesByGroupName(List<Match> matches) {
-//        Map<String, List<Match>> groupedMatches = matches.stream()
-//                .collect(Collectors.groupingBy(Match::getGroupName));
-//
-//        Map<String, List<GroupDTO>> result = new HashMap<>();
-//
-//        for (Map.Entry<String, List<Match>> entry : groupedMatches.entrySet()) {
-//            GroupDTO groupDTO = new GroupDTO();
-//            groupDTO.setGroup(entry.getKey());
-//            groupDTO.setTeams(calculateStandings(entry.getValue()));
-//
-//            result.computeIfAbsent(entry.getKey(), k -> new ArrayList<>()).add(groupDTO);
-//        }
-//
-//        return result;
-//    }
 
     private List<TeamStandingDTO> calculateStandings(List<Team> teamsInGroup, List<Match> allMatches) {
         Map<Long, TeamStandingDTO> standings = new HashMap<>();
@@ -280,48 +286,12 @@ public class BracketService {
         }
 
         for (Match match : allMatches) {
-            List<MatchTeam> matchTeams = match.getMatchTeams();
-            if (matchTeams.size() >= 2) {
-                MatchTeam teamOne = matchTeams.get(0);
-                MatchTeam teamTwo = matchTeams.get(1);
-
-                if (standings.containsKey(teamOne.getTeam().getTeamId()) &&
-                        standings.containsKey(teamTwo.getTeam().getTeamId())) {
-                    TeamStandingDTO standingOne = standings.get(teamOne.getTeam().getTeamId());
-                    TeamStandingDTO standingTwo = standings.get(teamTwo.getTeam().getTeamId());
-
-                    standingOne.addMatchId(match.getMatchId());
-                    standingTwo.addMatchId(match.getMatchId());
-
-                    if (match.getStatus() == MatchStatus.PAST) {
-                        updateStandings(teamOne, teamTwo, standingOne, standingTwo);
-                    }
-                }
+            if (match.getStatus() == MatchStatus.PAST) {
+                updateStandingsForMatch(match);
             }
         }
 
         return new ArrayList<>(standings.values());
-    }
-
-
-    private void updateStandings(MatchTeam teamOne, MatchTeam teamTwo,
-                                 TeamStandingDTO standingOne, TeamStandingDTO standingTwo) {
-        int scoreOne = teamOne.getScore();
-        int scoreTwo = teamTwo.getScore();
-
-        if (scoreOne > scoreTwo) {
-            standingOne.setWin(standingOne.getWin() + 1);
-            standingTwo.setLose(standingTwo.getLose() + 1);
-        } else if (scoreOne < scoreTwo) {
-            standingTwo.setWin(standingTwo.getWin() + 1);
-            standingOne.setLose(standingOne.getLose() + 1);
-        } else {
-            standingOne.setDraw(standingOne.getDraw() + 1);
-            standingTwo.setDraw(standingTwo.getDraw() + 1);
-        }
-
-        standingOne.updatePoints();
-        standingTwo.updatePoints();
     }
 
     private TournamentMatchDTO convertToTournamentMatchDTO(Match match) {

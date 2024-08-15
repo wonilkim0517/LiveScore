@@ -25,4 +25,6 @@ public class BracketDTO {
     private DepartmentEnum teamTwoName;
     private Integer teamOneScore;
     private Integer teamTwoScore;
+
+
 }

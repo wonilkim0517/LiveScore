@@ -1,5 +1,6 @@
 package ac.su.suport.livescore.repository;
 
+import ac.su.suport.livescore.constant.MatchStatus;
 import ac.su.suport.livescore.constant.MatchType;
 import ac.su.suport.livescore.domain.Match;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -21,6 +22,16 @@ public interface MatchRepository extends JpaRepository<Match, Long> {
     List<Match> findByDateOrderByDateDesc(LocalDate date);
 
     List<Match> findBySportAndDateOrderByDateDesc(String sport, LocalDate date);
+    List<Match> findBySportAndGroupNameAndStatus(String sport, String groupName, MatchStatus status);
+
+    @Query("SELECT m FROM Match m WHERE m.sport = :sport AND m.matchType = :matchType AND m.status = :status ORDER BY m.date, m.startTime")
+    List<Match> findBySportAndMatchTypeAndStatus(@Param("sport") String sport,
+                                                 @Param("matchType") MatchType matchType,
+                                                 @Param("status") MatchStatus status);
+
+    @Query("SELECT m FROM Match m WHERE m.sport = :sport AND m.groupName = :groupName ORDER BY m.date, m.startTime")
+    List<Match> findBySportAndGroupName(@Param("sport") String sport, @Param("groupName") String groupName);
+
 
     @Query("SELECT DISTINCT m FROM Match m JOIN m.matchTeams mt JOIN mt.team t WHERE t.department = :department ORDER BY m.date DESC")
     List<Match> findByDepartmentOrderByDateDesc(@Param("department") String department);
@@ -33,4 +44,6 @@ public interface MatchRepository extends JpaRepository<Match, Long> {
 
     @Query("SELECT DISTINCT m FROM Match m JOIN m.matchTeams mt JOIN mt.team t WHERE m.sport = :sport AND m.date = :date AND t.department = :department ORDER BY m.date DESC")
     List<Match> findBySportAndDateAndDepartmentOrderByDateDesc(@Param("sport") String sport, @Param("date") LocalDate date, @Param("department") String department);
+
+
 }

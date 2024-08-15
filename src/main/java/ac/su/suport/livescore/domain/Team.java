@@ -31,11 +31,11 @@ public class Team {
     @Column(name = "department",length = 50)
     private DepartmentEnum department;
 
-    @Column(name = "team_point")
-    private Integer teamPoint;
-
     @Column(name = "score")
-    private Integer score;
+    private Integer score = 0;  // Initialize with 0
+
+    @Column(name = "team_point")
+    private Integer teamPoint = 0;  // Initialize with 0
 
     @OneToMany(mappedBy = "team", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Lineup> lineups;
