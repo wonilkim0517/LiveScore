@@ -15,8 +15,13 @@ import java.time.LocalTime;
 @AllArgsConstructor
 @NoArgsConstructor
 public class MatchModificationDTO {
+    private Long matchId;
     private Long teamId1;
     private Long teamId2;
+    private String teamName1;
+    private String teamName2;
+    private String department1;
+    private String department2;
     private Integer teamScore1;
     private Integer teamScore2;
     private String sport;
