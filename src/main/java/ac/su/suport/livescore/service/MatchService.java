@@ -143,6 +143,7 @@ public class MatchService {
         dto.setStatus(MatchStatus.valueOf(match.getStatus().toString()));
         dto.setGroupName(match.getGroupName());  // 추가
         dto.setRound(match.getRound());  // 추가
+        dto.setMatchType(match.getMatchType());
 
         List<MatchTeam> matchTeams = match.getMatchTeams();
         if (matchTeams != null && matchTeams.size() >= 2) {
