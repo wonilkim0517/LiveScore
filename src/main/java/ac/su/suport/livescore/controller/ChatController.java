@@ -12,8 +12,8 @@ import org.springframework.stereotype.Controller;
 @Controller
 public class ChatController {
 
-    private final ChatRoomRepository chatRoomRepository;
-    private final ChatService chatService;
+    private final ChatRoomRepository chatRoomRepository; // 채팅방 저장소
+    private final ChatService chatService; // 채팅 서비스
 
     @MessageMapping("/chat/message/{matchId}")
     public void message(@DestinationVariable String matchId, ChatMessage message) {
@@ -31,3 +31,4 @@ public class ChatController {
         chatService.sendChatMessage(message);
     }
 }
+

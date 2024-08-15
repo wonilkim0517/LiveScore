@@ -9,11 +9,11 @@ import lombok.Setter;
 public class ChatMessage {
 
     public enum MessageType {
-        JOIN, TALK, QUIT
+        JOIN, TALK, QUIT // 메시지 타입 정의
     }
 
     private MessageType type; // 메시지 타입
-    private String roomId; // 방 번호
+    private String roomId; // 메시지가 속한 채팅방 ID
     private String sender; // 메시지 보낸 사람 (username)
     private String nickname; // 보낸 사람의 닉네임
     private String message; // 메시지 내용
@@ -29,3 +29,4 @@ public class ChatMessage {
         this.userCount = userCount;
     }
 }
+

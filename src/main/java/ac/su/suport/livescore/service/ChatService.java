@@ -12,22 +12,20 @@ import org.springframework.stereotype.Service;
 @Service
 public class ChatService {
 
-    private final ChannelTopic channelTopic;
-    private final RedisTemplate redisTemplate;
-    private final ChatRoomRepository chatRoomRepository;
-    private final UserRepository userRepository;
+    private final ChannelTopic channelTopic; // Redis 채널 토픽
+    private final RedisTemplate redisTemplate; // Redis 템플릿
+    private final ChatRoomRepository chatRoomRepository; // 채팅방 저장소
 
     public String getRoomId(String destination) {
         int lastIndex = destination.lastIndexOf('/');
         if (lastIndex != -1) {
-            return destination.substring(lastIndex + 1);
+            return destination.substring(lastIndex + 1); // 경로에서 roomId 추출
         } else {
             return "";
         }
     }
 
     public void sendChatMessage(ChatMessage chatMessage) {
-        // 닉네임 설정 부분과 메시지 발행 부분을 점검
         chatMessage.setUserCount(chatRoomRepository.getUserCount(chatMessage.getRoomId()));
 
         if (ChatMessage.MessageType.JOIN.equals(chatMessage.getType())) {
@@ -43,6 +41,6 @@ public class ChatService {
         redisTemplate.convertAndSend(channelTopic.getTopic(), chatMessage);
     }
 
-
 }
+
 
