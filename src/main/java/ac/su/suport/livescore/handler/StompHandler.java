@@ -1,6 +1,5 @@
 package ac.su.suport.livescore.handler;
 
-import ac.su.suport.livescore.domain.User;
 import ac.su.suport.livescore.dto.ChatMessage;
 import ac.su.suport.livescore.repository.ChatRoomRepository;
 import ac.su.suport.livescore.service.ChatService;
@@ -11,13 +10,10 @@ import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.ChannelInterceptor;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetails;
+
 import org.springframework.stereotype.Component;
 
 import java.security.Principal;
-import java.util.Optional;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -46,28 +42,15 @@ public class StompHandler implements ChannelInterceptor {
                 chatRoomRepository.setUserEnterInfo(sessionId, roomId);
                 chatRoomRepository.plusUserCount(roomId);
 
-                String name = Optional.ofNullable(accessor.getUser())
-                        .map(principal -> {
-                            if (principal instanceof Authentication) {
-                                Authentication auth = (Authentication) principal;
-                                Object principalObj = auth.getPrincipal();
-
-                                if (principalObj instanceof User) {
-                                    User user = (User) principalObj;
-                                    return user.getNickname();
-                                } else if (principalObj instanceof UserDetails) {
-                                    UserDetails userDetails = (UserDetails) principalObj;
-                                    return userDetails.getUsername(); // UserDetails의 username을 nickname으로 사용
-                                } else {
-                                    log.warn("Principal is not an instance of User or UserDetails. Principal: {}", principalObj);
-                                    return "UnknownUser";
-                                }
-                            } else {
-                                log.warn("Principal is not an instance of Authentication. Principal: {}", principal);
-                                return "UnknownUser";
-                            }
-                        })
-                        .orElse("UnknownUser");
+                // 사용자 정보 세션에서 가져오기
+                Principal userPrincipal = accessor.getUser();
+                String name = "UnknownUser";
+                if (userPrincipal != null) {
+                    name = userPrincipal.getName();
+                } else {
+                    // 핸드셰이크 시점에 세션에 저장된 사용자 정보 사용
+                    name = (String) accessor.getSessionAttributes().get("username");
+                }
 
                 chatService.sendChatMessage(ChatMessage.builder()
                         .type(ChatMessage.MessageType.JOIN)
@@ -80,7 +63,6 @@ public class StompHandler implements ChannelInterceptor {
                 log.info("Session ID: {} already subscribed to room ID: {}", sessionId, roomId);
             }
         } else if (StompCommand.DISCONNECT == accessor.getCommand()) {
-            // DISCONNECT 로직 유지
             String sessionId = (String) message.getHeaders().get("simpSessionId");
             String roomId = chatRoomRepository.getUserEnterRoomId(sessionId);
             if (roomId != null) {

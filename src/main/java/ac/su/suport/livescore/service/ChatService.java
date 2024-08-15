@@ -2,8 +2,9 @@ package ac.su.suport.livescore.service;
 
 import ac.su.suport.livescore.dto.ChatMessage;
 import ac.su.suport.livescore.repository.ChatRoomRepository;
-import ac.su.suport.livescore.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.listener.ChannelTopic;
 import org.springframework.stereotype.Service;
@@ -12,9 +13,11 @@ import org.springframework.stereotype.Service;
 @Service
 public class ChatService {
 
-    private final ChannelTopic channelTopic; // Redis 채널 토픽
-    private final RedisTemplate redisTemplate; // Redis 템플릿
-    private final ChatRoomRepository chatRoomRepository; // 채팅방 저장소
+    private static final Logger logger = LoggerFactory.getLogger(ChatService.class);
+
+    private final ChannelTopic channelTopic;
+    private final RedisTemplate redisTemplate;
+    private final ChatRoomRepository chatRoomRepository;
 
     public String getRoomId(String destination) {
         int lastIndex = destination.lastIndexOf('/');
@@ -38,9 +41,7 @@ public class ChatService {
             chatMessage.setSender("[알림]");
         }
 
+        logger.debug("Sending chat message to Redis: {}", chatMessage);
         redisTemplate.convertAndSend(channelTopic.getTopic(), chatMessage);
     }
-
 }
-
-

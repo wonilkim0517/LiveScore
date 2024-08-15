@@ -3,6 +3,7 @@ package ac.su.suport.livescore.config;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -31,7 +32,7 @@ public class SecurityConfig {
                 .headers(headers -> headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::sameOrigin)) // SockJS의 iframe 허용
                 .formLogin(AbstractHttpConfigurer::disable) // 기본 로그인 페이지 비활성화
                 .authorizeHttpRequests(authorizeRequests -> authorizeRequests
-                        .requestMatchers("/api/users/login", "/api/users/register", "/api/users/forgot-password", "/api/users/checkEmail", "/api/users/checkNickname", "/api/users/sendVerificationCode", "/api/users/verifyCode", "/", "/start", "/register", "/nickname", "/login", "/chat/room", "/chat/**").permitAll()
+                        .requestMatchers("/api/users/login", "/api/users/register", "/api/users/forgot-password", "/api/users/checkEmail", "/api/users/checkNickname", "/api/users/sendVerificationCode", "/api/users/verifyCode", "/", "/start", "/register", "/nickname", "/login", "/chat/room", "/chat/**", "/LivePage/**").permitAll()
 //                        .requestMatchers("/chat/**").hasRole("USER") // /chat/** 경로에 USER 역할 필요
                         .anyRequest().permitAll());
         return http.build();
