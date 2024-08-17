@@ -1,7 +1,5 @@
 package ac.su.suport.livescore.dto;
 
-import ac.su.suport.livescore.constant.MatchStatus;
-import ac.su.suport.livescore.constant.MatchType;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -23,14 +21,10 @@ public class MatchSummaryDTO {
         private int teamScore1;
         private int teamScore2;
         private String sport;
-        private MatchStatus status;  // 수정: String에서 MatchStatus로 변경
+        private String status;
         private LocalDate date;
         private LocalTime startTime;
-        private MatchType matchType;  // 추가
-        private String groupName;  // 추가
-        private String round;  // 추가
     }
-
     @Getter
     @Setter
     @AllArgsConstructor
@@ -44,11 +38,13 @@ public class MatchSummaryDTO {
         private int teamScore1;
         private int teamScore2;
         private String sport;
-        private MatchStatus status;  // 수정: String에서 MatchStatus로 변경
+        private String status;
         private LocalDate date;
         private LocalTime startTime;
-        private MatchType matchType;  // 추가
-        private String groupName;
+        private String groupName;  //밑에 3개 추가
         private String round;
+        private String result;
+
+
     }
 }
