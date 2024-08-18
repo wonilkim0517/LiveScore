@@ -225,15 +225,15 @@ public class MatchService {
         }
 
         if (match.getStatus() == MatchStatus.PAST) {
-            dto.setResult(match.getResult().toString());
+            dto.setResult(match.getResult() != null ? match.getResult() : MatchResult.NOT_PLAYED);
         } else {
-            dto.setResult(MatchResult.NOT_PLAYED.toString());
+            dto.setResult(MatchResult.NOT_PLAYED);
         }
 
         return dto;
     }
 
-    public List<Match> getAllMatchesWithVideos() {
+        public List<Match> getAllMatchesWithVideos() {
         List<Match> matches = matchRepository.findAll();
         for (Match match : matches) {
             match.setVideos(videoRepository.findByMatch(match));
