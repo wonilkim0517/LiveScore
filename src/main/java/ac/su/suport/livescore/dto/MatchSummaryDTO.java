@@ -1,6 +1,7 @@
 package ac.su.suport.livescore.dto;
 
 import ac.su.suport.livescore.constant.MatchResult;
+import ac.su.suport.livescore.constant.MatchType;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -45,6 +46,7 @@ public class MatchSummaryDTO {
         private String groupName;  //밑에 3개 추가
         private String round;
         private MatchResult result;
+        private MatchType matchType;
 
 
     }

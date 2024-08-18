@@ -87,6 +87,7 @@ public class MatchService {
     @Transactional
     public MatchModificationDTO createMatch(MatchModificationDTO matchModificationDTO) {
         Match match = convertToEntity(matchModificationDTO);
+
         Match savedMatch = matchRepository.save(match);
         saveMatchTeam(savedMatch, matchModificationDTO.getTeamId1(), matchModificationDTO.getTeamId2());
         return convertToModificationDTO(savedMatch);
@@ -211,6 +212,7 @@ public class MatchService {
         dto.setStatus(match.getStatus().toString());
         dto.setGroupName(match.getGroupName());
         dto.setRound(match.getRound());
+        dto.setMatchType(match.getMatchType());
 
         List<MatchTeam> matchTeams = match.getMatchTeams();
         if (matchTeams != null && matchTeams.size() >= 2) {
