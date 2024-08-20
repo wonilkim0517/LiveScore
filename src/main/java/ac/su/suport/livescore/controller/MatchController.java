@@ -1,5 +1,6 @@
 package ac.su.suport.livescore.controller;
 
+import ac.su.suport.livescore.constant.TournamentRound;
 import ac.su.suport.livescore.domain.LiveVideoStream;
 import ac.su.suport.livescore.domain.Match;
 import ac.su.suport.livescore.domain.Video;
@@ -89,7 +90,7 @@ public class MatchController {
     @PostMapping("/initialize-tournament")
     public ResponseEntity<List<TournamentMatchDTO>> initializeTournament(
             @RequestParam String sport,
-            @RequestParam String startingRound) {
+            @RequestParam TournamentRound startingRound) {
         List<TournamentMatchDTO> initializedTournament = bracketService.initializeTournament(sport, startingRound);
         return new ResponseEntity<>(initializedTournament, HttpStatus.CREATED);
     }

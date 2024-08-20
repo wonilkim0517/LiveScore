@@ -3,6 +3,7 @@ package ac.su.suport.livescore.service;
 import ac.su.suport.livescore.constant.DepartmentEnum;
 import ac.su.suport.livescore.constant.MatchStatus;
 import ac.su.suport.livescore.constant.MatchType;
+import ac.su.suport.livescore.constant.TournamentRound;
 import ac.su.suport.livescore.domain.Match;
 import ac.su.suport.livescore.domain.MatchTeam;
 import ac.su.suport.livescore.domain.Team;
@@ -31,24 +32,23 @@ public class BracketService {
 
     // 새로 추가된 초기화 메서드
     @Transactional
-    public List<TournamentMatchDTO> initializeTournament(String sport, String startingRound) {
-        // 토너먼트 라운드 정의
-        List<String> allRounds = Arrays.asList("16강", "8강", "4강", "결승");
-        int startIndex = allRounds.indexOf(startingRound);
+    public List<TournamentMatchDTO> initializeTournament(String sport, TournamentRound startingRound) {
+        List<TournamentRound> tournamentRounds = Arrays.asList(TournamentRound.values());
+        int startIndex = tournamentRounds.indexOf(startingRound);
         if (startIndex == -1) {
             throw new IllegalArgumentException("Invalid starting round: " + startingRound);
         }
-        List<String> tournamentRounds = allRounds.subList(startIndex, allRounds.size());
+        List<TournamentRound> rounds = tournamentRounds.subList(startIndex, tournamentRounds.size());
 
         List<Match> tournamentMatches = new ArrayList<>();
 
-        for (String round : tournamentRounds) {
+        for (TournamentRound round : rounds) {
             int matchesInRound = getMatchesCountForRound(round);
             for (int i = 0; i < matchesInRound; i++) {
                 Match match = new Match();
                 match.setSport(sport);
                 match.setMatchType(MatchType.TOURNAMENT);
-                match.setRound(round);
+                match.setRound(round.getDisplayName());
                 match.setStatus(MatchStatus.FUTURE);
                 match.setDate(LocalDate.now().plusDays(i)); // 예시: 각 경기마다 하루씩 늦춤
                 match.setStartTime(LocalTime.of(18, 0)); // 예시: 모든 경기 18:00 시작
@@ -65,15 +65,13 @@ public class BracketService {
         return dtos;
     }
 
-    private int getMatchesCountForRound(String round) {
+    private int getMatchesCountForRound(TournamentRound round) {
         switch (round) {
-            case "16강":
-                return 8;
-            case "8강":
+            case QUARTER_FINALS:
                 return 4;
-            case "4강":
+            case SEMI_FINALS:
                 return 2;
-            case "결승":
+            case FINAL:
                 return 1;
             default:
                 throw new IllegalArgumentException("Unknown round: " + round);
