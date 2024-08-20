@@ -10,6 +10,7 @@ import lombok.Setter;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.List;
 
 @Getter @Setter
 public class BracketDTO {
@@ -25,6 +26,9 @@ public class BracketDTO {
     private DepartmentEnum teamTwoName;
     private Integer teamOneScore;
     private Integer teamTwoScore;
+    private String teamOneSubScores;  // 서브 스코어 (승부차기 또는 세트 스코어)
+    private String teamTwoSubScores;  // 서브 스코어 (승부차기 또는 세트 스코어)
+    private boolean showSubScores;  // 서브 스코어를 보여줄지 여부
 
 
 }

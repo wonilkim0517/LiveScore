@@ -15,6 +15,8 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -26,6 +28,57 @@ public class BracketService {
     private final MatchRepository matchRepository;
     private final TeamRepository teamRepository;
     private final MatchTeamRepository matchTeamRepository;
+
+    // 새로 추가된 초기화 메서드
+    @Transactional
+    public List<TournamentMatchDTO> initializeTournament(String sport, String startingRound) {
+        // 토너먼트 라운드 정의
+        List<String> allRounds = Arrays.asList("16강", "8강", "4강", "결승");
+        int startIndex = allRounds.indexOf(startingRound);
+        if (startIndex == -1) {
+            throw new IllegalArgumentException("Invalid starting round: " + startingRound);
+        }
+        List<String> tournamentRounds = allRounds.subList(startIndex, allRounds.size());
+
+        List<Match> tournamentMatches = new ArrayList<>();
+
+        for (String round : tournamentRounds) {
+            int matchesInRound = getMatchesCountForRound(round);
+            for (int i = 0; i < matchesInRound; i++) {
+                Match match = new Match();
+                match.setSport(sport);
+                match.setMatchType(MatchType.TOURNAMENT);
+                match.setRound(round);
+                match.setStatus(MatchStatus.FUTURE);
+                match.setDate(LocalDate.now().plusDays(i)); // 예시: 각 경기마다 하루씩 늦춤
+                match.setStartTime(LocalTime.of(18, 0)); // 예시: 모든 경기 18:00 시작
+                tournamentMatches.add(match);
+            }
+        }
+
+        List<Match> savedMatches = matchRepository.saveAll(tournamentMatches);
+        List<TournamentMatchDTO> dtos = savedMatches.stream()
+                .map(this::convertToTournamentMatchDTO)
+                .collect(Collectors.toList());
+
+        updateNextMatchIds(dtos);
+        return dtos;
+    }
+
+    private int getMatchesCountForRound(String round) {
+        switch (round) {
+            case "16강":
+                return 8;
+            case "8강":
+                return 4;
+            case "4강":
+                return 2;
+            case "결승":
+                return 1;
+            default:
+                throw new IllegalArgumentException("Unknown round: " + round);
+        }
+    }
 
     public Map<String, List<GroupDTO>> getSportLeagueBrackets(String sport) {
         List<Match> matches = matchRepository.findBySportAndMatchType(sport, MatchType.LEAGUE);
@@ -45,6 +98,7 @@ public class BracketService {
 
         return result;
     }
+
     private Map<String, List<Team>> groupTeamsByGroup(List<Match> matches) {
         Map<String, List<Team>> groupedTeams = new HashMap<>();
         for (Match match : matches) {
@@ -66,57 +120,33 @@ public class BracketService {
         updateNextMatchIds(dtos);
         return dtos;
     }
+
     private void updateNextMatchIds(List<TournamentMatchDTO> matches) {
-        Map<String, TournamentMatchDTO> roundMap = new HashMap<>();
-        for (TournamentMatchDTO match : matches) {
-            String round = match.getTournamentRoundText();
-            if (!roundMap.containsKey(round)) {
-                roundMap.put(round, match);
-            } else {
-                // 같은 라운드의 다음 경기가 있다면, 둘 다 다음 라운드의 경기 ID를 가리키도록 함
-                TournamentMatchDTO existingMatch = roundMap.get(round);
-                String nextRound = getNextRound(round);
-                TournamentMatchDTO nextMatch = roundMap.get(nextRound);
-                if (nextMatch != null) {
-                    existingMatch.setNextMatchId(nextMatch.getId());
-                    match.setNextMatchId(nextMatch.getId());
-                }
-            }
-        }
-    }
-    private String getNextRound(String currentRound) {
-        // 라운드 순서를 정의. 필요에 따라 수정하세요.
-        List<String> rounds = Arrays.asList("Round Quarter Final", "Round Semi Final", "Round Final");
-        int currentIndex = rounds.indexOf(currentRound);
-        if (currentIndex < rounds.size() - 1) {
-            return rounds.get(currentIndex + 1);
-        }
-        return null;
-    }
+        List<String> roundOrder = Arrays.asList("16강", "8강", "4강", "결승");
 
-
-    private void setNextMatchId(List<TournamentMatchDTO> matches) {
-        Map<String, TournamentMatchDTO> roundMap = new HashMap<>();
-        for (TournamentMatchDTO match : matches) {
-            roundMap.put(match.getTournamentRoundText(), match);
-        }
-
-        // 라운드 순서 정의 (예: Quarter Final -> Semi Final -> Final)
-        List<String> roundOrder = Arrays.asList("Quarter Final", "Semi Final", "Final");
+        Map<String, List<TournamentMatchDTO>> roundMatches = matches.stream()
+                .collect(Collectors.groupingBy(TournamentMatchDTO::getTournamentRoundText));
 
         for (int i = 0; i < roundOrder.size() - 1; i++) {
             String currentRound = roundOrder.get(i);
             String nextRound = roundOrder.get(i + 1);
-            TournamentMatchDTO currentMatch = roundMap.get(currentRound);
-            TournamentMatchDTO nextMatch = roundMap.get(nextRound);
 
-            if (currentMatch != null && nextMatch != null) {
-                currentMatch.setNextMatchId(nextMatch.getId());
+            List<TournamentMatchDTO> currentMatches = roundMatches.get(currentRound);
+            List<TournamentMatchDTO> nextMatches = roundMatches.get(nextRound);
+
+            if (currentMatches != null && nextMatches != null) {
+                for (int j = 0; j < currentMatches.size(); j += 2) {
+                    if (j / 2 < nextMatches.size()) {
+                        Long nextMatchId = nextMatches.get(j / 2).getId();
+                        currentMatches.get(j).setNextMatchId(nextMatchId);
+                        if (j + 1 < currentMatches.size()) {
+                            currentMatches.get(j + 1).setNextMatchId(nextMatchId);
+                        }
+                    }
+                }
             }
         }
     }
-
-
 
     @Transactional
     public BracketDTO createLeagueBracket(BracketDTO bracketDTO) {
@@ -197,7 +227,6 @@ public class BracketService {
         matchRepository.delete(match);
     }
 
-
     @Transactional
     public BracketDTO createTournamentBracket(BracketDTO bracketDTO) {
         Match match = convertToMatch(bracketDTO);
@@ -207,7 +236,10 @@ public class BracketService {
         Team teamTwo = findOrCreateTeam(bracketDTO.getTeamTwoName());
 
         MatchTeam matchTeamOne = new MatchTeam(match, teamOne, bracketDTO.getTeamOneScore());
+        matchTeamOne.setSubScores(bracketDTO.getTeamOneSubScores());
+
         MatchTeam matchTeamTwo = new MatchTeam(match, teamTwo, bracketDTO.getTeamTwoScore());
+        matchTeamTwo.setSubScores(bracketDTO.getTeamTwoSubScores());
 
         match.getMatchTeams().add(matchTeamOne);
         match.getMatchTeams().add(matchTeamTwo);
@@ -251,11 +283,6 @@ public class BracketService {
         match.setRound(bracketDTO.getRound());
     }
 
-
-
-
-
-
     private Team findOrCreateTeam(DepartmentEnum department) {
         if (department == null) {
             throw new IllegalArgumentException("Department cannot be null");
@@ -270,6 +297,7 @@ public class BracketService {
                     return teamRepository.save(newTeam);
                 });
     }
+
     private void updateMatchTeams(Match match, BracketDTO bracketDTO) {
         List<MatchTeam> matchTeams = match.getMatchTeams();
 
@@ -282,9 +310,11 @@ public class BracketService {
 
             matchTeamOne.setTeam(teamOne);
             matchTeamOne.setScore(bracketDTO.getTeamOneScore());
+            matchTeamOne.setSubScores(bracketDTO.getTeamOneSubScores());
 
             matchTeamTwo.setTeam(teamTwo);
             matchTeamTwo.setScore(bracketDTO.getTeamTwoScore());
+            matchTeamTwo.setSubScores(bracketDTO.getTeamTwoSubScores());
 
             matchTeamRepository.save(matchTeamOne);
             matchTeamRepository.save(matchTeamTwo);
@@ -314,23 +344,6 @@ public class BracketService {
             teamRepository.save(teamTwo);
         }
     }
-
-//    private Map<String, List<GroupDTO>> groupMatchesByGroupName(List<Match> matches) {
-//        Map<String, List<Match>> groupedMatches = matches.stream()
-//                .collect(Collectors.groupingBy(Match::getGroupName));
-//
-//        Map<String, List<GroupDTO>> result = new HashMap<>();
-//
-//        for (Map.Entry<String, List<Match>> entry : groupedMatches.entrySet()) {
-//            GroupDTO groupDTO = new GroupDTO();
-//            groupDTO.setGroup(entry.getKey());
-//            groupDTO.setTeams(calculateStandings(entry.getValue()));
-//
-//            result.computeIfAbsent(entry.getKey(), k -> new ArrayList<>()).add(groupDTO);
-//        }
-//
-//        return result;
-//    }
 
     private List<TeamStandingDTO> calculateStandings(List<Team> teamsInGroup, List<Match> allMatches) {
         Map<Long, TeamStandingDTO> standings = new HashMap<>();
@@ -363,7 +376,6 @@ public class BracketService {
         return new ArrayList<>(standings.values());
     }
 
-
     private void updateStandings(MatchTeam teamOne, MatchTeam teamTwo,
                                  TeamStandingDTO standingOne, TeamStandingDTO standingTwo) {
         int scoreOne = teamOne.getScore();
@@ -387,9 +399,9 @@ public class BracketService {
     private TournamentMatchDTO convertToTournamentMatchDTO(Match match) {
         TournamentMatchDTO dto = new TournamentMatchDTO();
         dto.setId(match.getMatchId());
-        dto.setName("Round " + match.getRound() + " - Match " + match.getMatchId());
-        dto.setNextMatchId(null); // 이 부분은 토너먼트 구조에 따라 별도로 설정해야 합니다
-        dto.setTournamentRoundText("Round " + match.getRound());
+        dto.setName(match.getRound() + " - Match " + match.getMatchId());
+        dto.setNextMatchId(null); // This will be set in updateNextMatchIds method
+        dto.setTournamentRoundText(match.getRound());
         dto.setStartTime(match.getDate().atTime(match.getStartTime()).toString());
         dto.setState(match.getStatus().toString());
 
@@ -397,7 +409,7 @@ public class BracketService {
         for (MatchTeam matchTeam : match.getMatchTeams()) {
             ParticipantDTO participant = new ParticipantDTO();
             participant.setId(matchTeam.getTeam().getTeamId().toString());
-            participant.setResultText(matchTeam.getScore().toString());
+            participant.setResultText(matchTeam.getScore() != null ? matchTeam.getScore().toString() : "");
             participant.setIsWinner(determineWinner(match, matchTeam));
             participant.setStatus(match.getStatus().toString());
             participant.setName(String.valueOf(matchTeam.getTeam().getDepartment()));
@@ -439,6 +451,12 @@ public class BracketService {
             bracketDTO.setTeamTwoName(teamTwo.getTeam().getDepartment());
             bracketDTO.setTeamOneScore(teamOne.getScore());
             bracketDTO.setTeamTwoScore(teamTwo.getScore());
+            bracketDTO.setTeamOneSubScores(teamOne.getSubScores());
+            bracketDTO.setTeamTwoSubScores(teamTwo.getSubScores());
+
+            // 서브스코어 표시 여부 설정
+            bracketDTO.setShowSubScores(match.getSport().equals("SOCCER") ?
+                    (teamOne.getSubScores() != null && !teamOne.getSubScores().isEmpty()) : true);
         }
 
         return bracketDTO;

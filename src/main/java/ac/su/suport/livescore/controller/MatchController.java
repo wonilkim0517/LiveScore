@@ -5,6 +5,8 @@ import ac.su.suport.livescore.domain.Match;
 import ac.su.suport.livescore.domain.Video;
 import ac.su.suport.livescore.dto.MatchModificationDTO;
 import ac.su.suport.livescore.dto.MatchSummaryDTO;
+import ac.su.suport.livescore.dto.TournamentMatchDTO;
+import ac.su.suport.livescore.service.BracketService;
 import ac.su.suport.livescore.service.LiveVideoStreamService;
 import ac.su.suport.livescore.service.MatchService;
 import ac.su.suport.livescore.service.VideoService;
@@ -25,6 +27,7 @@ import java.util.List;
 public class MatchController {
 
     private final MatchService matchService;
+    private final BracketService bracketService;
     private final LiveVideoStreamService liveVideoStreamService;
     private final VideoService videoService;
 
@@ -81,5 +84,13 @@ public class MatchController {
         } else {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
+    }
+
+    @PostMapping("/initialize-tournament")
+    public ResponseEntity<List<TournamentMatchDTO>> initializeTournament(
+            @RequestParam String sport,
+            @RequestParam String startingRound) {
+        List<TournamentMatchDTO> initializedTournament = bracketService.initializeTournament(sport, startingRound);
+        return new ResponseEntity<>(initializedTournament, HttpStatus.CREATED);
     }
 }
