@@ -87,11 +87,4 @@ public class MatchController {
         }
     }
 
-    @PostMapping("/initialize-tournament")
-    public ResponseEntity<List<TournamentMatchDTO>> initializeTournament(
-            @RequestParam String sport,
-            @RequestParam TournamentRound startingRound) {
-        List<TournamentMatchDTO> initializedTournament = bracketService.initializeTournament(sport, startingRound);
-        return new ResponseEntity<>(initializedTournament, HttpStatus.CREATED);
-    }
 }
