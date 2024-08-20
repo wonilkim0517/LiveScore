@@ -34,7 +34,7 @@ public class LiveStreamService {
         stream.setStatus(LiveVideoStreamStatus.ACTIVE);
         LiveVideoStream savedStream = liveVideoStreamRepository.save(stream);
 
-        ffmpegService.startStreaming(matchId.toString());
+        ffmpegService.startWebcamStreaming(matchId.toString());
 
         return savedStream;
     }
