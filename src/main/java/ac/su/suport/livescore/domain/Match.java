@@ -43,6 +43,10 @@ public class Match {
     @Column(name = "round", length = 50)
     private String round;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "result")
+    private MatchResult result;
+
     @OneToMany(mappedBy = "match", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<MatchTeam> matchTeams;
 

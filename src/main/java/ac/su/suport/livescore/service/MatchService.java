@@ -1,5 +1,6 @@
 package ac.su.suport.livescore.service;
 
+import ac.su.suport.livescore.constant.MatchResult;
 import ac.su.suport.livescore.constant.MatchStatus;
 import ac.su.suport.livescore.domain.Match;
 import ac.su.suport.livescore.domain.MatchTeam;
@@ -10,14 +11,12 @@ import ac.su.suport.livescore.repository.MatchRepository;
 import ac.su.suport.livescore.repository.MatchTeamRepository;
 import ac.su.suport.livescore.repository.TeamRepository;
 import ac.su.suport.livescore.repository.VideoRepository;
-import jakarta.persistence.EntityNotFoundException;
+import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -86,52 +85,122 @@ public class MatchService {
     }
 
     @Transactional
-    public MatchModificationDTO createMatch(MatchModificationDTO matchDTO) {
-        Team team1 = teamRepository.findById(matchDTO.getTeamId1())
-                .orElseThrow(() -> new EntityNotFoundException("Team 1 not found"));
-        Team team2 = teamRepository.findById(matchDTO.getTeamId2())
-                .orElseThrow(() -> new EntityNotFoundException("Team 2 not found"));
-
-        Match match = new Match();
-        updateMatchFromDTO(match, matchDTO);
-
-        MatchTeam matchTeam1 = new MatchTeam(match, team1, matchDTO.getTeamScore1() != null ? matchDTO.getTeamScore1() : 0);
-        MatchTeam matchTeam2 = new MatchTeam(match, team2, matchDTO.getTeamScore2() != null ? matchDTO.getTeamScore2() : 0);
-
-        match.setMatchTeams(Arrays.asList(matchTeam1, matchTeam2));
+    public MatchModificationDTO createMatch(MatchModificationDTO matchModificationDTO) {
+        Match match = convertToEntity(matchModificationDTO);
 
         Match savedMatch = matchRepository.save(match);
-        return convertToMatchModificationDTO(savedMatch);
+        saveMatchTeam(savedMatch, matchModificationDTO.getTeamId1(), matchModificationDTO.getTeamId2());
+        return convertToModificationDTO(savedMatch);
     }
 
     @Transactional
-    public MatchModificationDTO updateMatch(Long matchId, MatchModificationDTO matchDTO) {
-        Match match = matchRepository.findById(matchId)
-                .orElseThrow(() -> new EntityNotFoundException("Match not found"));
+    public MatchModificationDTO updateMatch(Long id, MatchModificationDTO matchModificationDTO) {
+        Match match = matchRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Match not found"));
 
-        updateMatchFromDTO(match, matchDTO);
+        MatchStatus oldStatus = match.getStatus();
+        updateMatchDetails(match, matchModificationDTO);
 
-        if (match.getMatchTeams().size() >= 2) {
-            MatchTeam matchTeam1 = match.getMatchTeams().get(0);
-            MatchTeam matchTeam2 = match.getMatchTeams().get(1);
-
-            updateTeamIfChanged(matchTeam1, matchDTO.getTeamId1(), matchDTO.getTeamScore1());
-            updateTeamIfChanged(matchTeam2, matchDTO.getTeamId2(), matchDTO.getTeamScore2());
-
-            matchTeamRepository.saveAll(Arrays.asList(matchTeam1, matchTeam2));
+        if (match.getStatus() == MatchStatus.PAST) {
+            updateMatchTeams(match, matchModificationDTO);
+            if (oldStatus != MatchStatus.PAST) {
+                updateMatchResult(match);
+            }
+        } else {
+            // For LIVE or FUTURE matches, only update non-score information
+            matchModificationDTO.setTeamScore1(match.getMatchTeams().get(0).getScore());
+            matchModificationDTO.setTeamScore2(match.getMatchTeams().get(1).getScore());
         }
 
         Match updatedMatch = matchRepository.save(match);
-        return convertToMatchModificationDTO(updatedMatch);
+        return convertToModificationDTO(updatedMatch);
     }
 
-    private void updateTeamIfChanged(MatchTeam matchTeam, Long newTeamId, Integer newScore) {
+    private void updateMatchResult(Match match) {
+        List<MatchTeam> matchTeams = match.getMatchTeams();
+        if (matchTeams.size() >= 2) {
+            MatchTeam team1 = matchTeams.get(0);
+            MatchTeam team2 = matchTeams.get(1);
+
+            int scoreOne = team1.getScore();
+            int scoreTwo = team2.getScore();
+
+            MatchResult result;
+            if (scoreOne > scoreTwo) {
+                result = MatchResult.TEAM_ONE_WIN;
+            } else if (scoreOne < scoreTwo) {
+                result = MatchResult.TEAM_TWO_WIN;
+            } else {
+                result = MatchResult.DRAW;
+            }
+
+            match.setResult(result);
+            updateTeamPoints(team1.getTeam(), team2.getTeam(), result);
+        }
+    }
+
+    private void updateTeamPoints(Team team1, Team team2, MatchResult result) {
+        switch (result) {
+            case TEAM_ONE_WIN:
+                addPoints(team1, 3);
+                break;
+            case TEAM_TWO_WIN:
+                addPoints(team2, 3);
+                break;
+            case DRAW:
+                addPoints(team1, 1);
+                addPoints(team2, 1);
+                break;
+        }
+    }
+
+    private void addPoints(Team team, int points) {
+        team.setTeamPoint(team.getTeamPoint() + points);
+        teamRepository.save(team);
+    }
+
+    private void saveMatchTeam(Match match, Long teamId1, Long teamId2) {
+        MatchTeam matchTeam1 = new MatchTeam();
+        matchTeam1.setMatch(match);
+        matchTeam1.setTeam(teamRepository.findById(teamId1).orElseThrow(() -> new RuntimeException("Team not found")));
+        matchTeam1.setLineup(null);
+        matchTeamRepository.save(matchTeam1);
+
+        MatchTeam matchTeam2 = new MatchTeam();
+        matchTeam2.setMatch(match);
+        matchTeam2.setTeam(teamRepository.findById(teamId2).orElseThrow(() -> new RuntimeException("Team not found")));
+        matchTeam2.setLineup(null);
+        matchTeamRepository.save(matchTeam2);
+
+        match.setMatchTeams(List.of(matchTeam1, matchTeam2));
+    }
+
+    private void updateMatchDetails(Match match, MatchModificationDTO matchModificationDTO) {
+        match.setSport(matchModificationDTO.getSport());
+        match.setDate(matchModificationDTO.getDate());
+        match.setStartTime(matchModificationDTO.getStartTime());
+        match.setMatchType(matchModificationDTO.getMatchType());
+        match.setStatus(matchModificationDTO.getMatchStatus());
+        match.setGroupName(matchModificationDTO.getGroupName());
+        match.setRound(matchModificationDTO.getRound());
+    }
+
+    private void updateMatchTeams(Match match, MatchModificationDTO matchModificationDTO) {
+        List<MatchTeam> matchTeams = match.getMatchTeams();
+        if (matchTeams.size() >= 2) {
+            updateTeam(matchTeams.get(0), matchModificationDTO.getTeamId1(), matchModificationDTO.getTeamScore1());
+            updateTeam(matchTeams.get(1), matchModificationDTO.getTeamId2(), matchModificationDTO.getTeamScore2());
+        }
+    }
+
+    private void updateTeam(MatchTeam matchTeam, Long newTeamId, Integer newScore) {
         if (!matchTeam.getTeam().getTeamId().equals(newTeamId)) {
             Team newTeam = teamRepository.findById(newTeamId)
-                    .orElseThrow(() -> new EntityNotFoundException("Team not found"));
+                    .orElseThrow(() -> new RuntimeException("Team not found"));
             matchTeam.setTeam(newTeam);
         }
         matchTeam.setScore(newScore);
+        matchTeamRepository.save(matchTeam);
     }
 
     private MatchSummaryDTO.Response convertToMatchSummaryResponse(Match match) {
@@ -140,9 +209,9 @@ public class MatchService {
         dto.setSport(match.getSport());
         dto.setDate(match.getDate());
         dto.setStartTime(match.getStartTime());
-        dto.setStatus(MatchStatus.valueOf(match.getStatus().toString()));
-        dto.setGroupName(match.getGroupName());  // 추가
-        dto.setRound(match.getRound());  // 추가
+        dto.setStatus(match.getStatus().toString());
+        dto.setGroupName(match.getGroupName());
+        dto.setRound(match.getRound());
         dto.setMatchType(match.getMatchType());
 
         List<MatchTeam> matchTeams = match.getMatchTeams();
@@ -157,10 +226,16 @@ public class MatchService {
             dto.setTeamScore2(team2.getScore() != null ? team2.getScore() : 0);
         }
 
+        if (match.getStatus() == MatchStatus.PAST) {
+            dto.setResult(match.getResult() != null ? match.getResult() : MatchResult.NOT_PLAYED);
+        } else {
+            dto.setResult(MatchResult.NOT_PLAYED);
+        }
+
         return dto;
     }
 
-    public List<Match> getAllMatchesWithVideos() {
+        public List<Match> getAllMatchesWithVideos() {
         List<Match> matches = matchRepository.findAll();
         for (Match match : matches) {
             match.setVideos(videoRepository.findByMatch(match));
@@ -168,45 +243,47 @@ public class MatchService {
         return matches;
     }
 
-    private void updateMatchFromDTO(Match match, MatchModificationDTO matchDTO) {
-        match.setSport(matchDTO.getSport());
-        match.setDate(matchDTO.getDate());
-        match.setStartTime(matchDTO.getStartTime());
-        match.setMatchType(matchDTO.getMatchType());
-        match.setStatus(matchDTO.getMatchStatus());
-        match.setGroupName(matchDTO.getGroupName());
-        match.setRound(matchDTO.getRound());
+    private MatchModificationDTO convertToModificationDTO(Match savedMatch) {
+        MatchModificationDTO dto = new MatchModificationDTO();
 
-        LocalDateTime matchDateTime = LocalDateTime.of(matchDTO.getDate(), matchDTO.getStartTime());
+        MatchTeam matchTeam1 = savedMatch.getMatchTeams().get(0);
+        MatchTeam matchTeam2 = savedMatch.getMatchTeams().get(1);
+
+        dto.setTeamId1(matchTeam1.getTeam().getTeamId());
+        dto.setTeamId2(matchTeam2.getTeam().getTeamId());
+        dto.setTeamScore1(matchTeam1.getScore());
+        dto.setTeamScore2(matchTeam2.getScore());
+
+        dto.setSport(savedMatch.getSport());
+        dto.setDate(savedMatch.getDate());
+        dto.setStartTime(savedMatch.getStartTime());
+        dto.setMatchType(savedMatch.getMatchType());
+        dto.setMatchStatus(savedMatch.getStatus());
+        dto.setGroupName(savedMatch.getGroupName());
+        dto.setRound(savedMatch.getRound());
+
+        return dto;
+    }
+
+    private Match convertToEntity(MatchModificationDTO matchModificationDTO) {
+        Match match = new Match();
+        match.setSport(matchModificationDTO.getSport());
+        match.setDate(matchModificationDTO.getDate());
+        match.setStartTime(matchModificationDTO.getStartTime());
+        match.setMatchType(matchModificationDTO.getMatchType());
+        match.setStatus(matchModificationDTO.getMatchStatus());
+        match.setGroupName(matchModificationDTO.getGroupName());
+        match.setRound(matchModificationDTO.getRound());
+
+        LocalDateTime matchDateTime = LocalDateTime.of(matchModificationDTO.getDate(), matchModificationDTO.getStartTime());
         LocalDateTime now = LocalDateTime.now();
 
         if (matchDateTime.isBefore(now)) {
             match.setStatus(MatchStatus.PAST);
-        } else if (match.getStatus() != MatchStatus.LIVE) {
+        } else {
             match.setStatus(MatchStatus.FUTURE);
         }
-    }
 
-    private MatchModificationDTO convertToMatchModificationDTO(Match match) {
-        MatchModificationDTO dto = new MatchModificationDTO();
-        dto.setSport(match.getSport());
-        dto.setDate(match.getDate());
-        dto.setStartTime(match.getStartTime());
-        dto.setMatchType(match.getMatchType());
-        dto.setMatchStatus(match.getStatus());
-        dto.setGroupName(match.getGroupName());
-        dto.setRound(match.getRound());
-
-        List<MatchTeam> matchTeams = match.getMatchTeams();
-        if (matchTeams != null && matchTeams.size() >= 2) {
-            MatchTeam team1 = matchTeams.get(0);
-            MatchTeam team2 = matchTeams.get(1);
-            dto.setTeamId1(team1.getTeam().getTeamId());
-            dto.setTeamId2(team2.getTeam().getTeamId());
-            dto.setTeamScore1(team1.getScore());
-            dto.setTeamScore2(team2.getScore());
-        }
-
-        return dto;
+        return match;
     }
 }

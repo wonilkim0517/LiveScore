@@ -65,6 +65,7 @@ jobs:
           ssh -i $HOME/.ssh/id_rsa -o StrictHostKeyChecking=no ec2-user@${{ secrets.EC2_IP }} <<'EOF'
             chmod +x /home/ec2-user/LiveScore-0.0.1-SNAPSHOT.jar
             pkill -f LiveScore-0.0.1-SNAPSHOT.jar || true
+            sudo kill -9 $(sudo lsof -t -i :8080)
             nohup java -jar /home/ec2-user/LiveScore-0.0.1-SNAPSHOT.jar --spring.profiles.active=prod > /home/ec2-user/app.log 2>&1 &
             echo "JAR 파일이 백그라운드에서 실행되고 있습니다."
           EOF

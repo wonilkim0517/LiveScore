@@ -6,6 +6,8 @@ import lombok.Setter;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 
+import java.util.List;
+
 @Entity
 @Table(name = "match_team")
 @Getter @Setter
@@ -31,12 +33,16 @@ public class MatchTeam {
     @Column(name = "score")
     private Integer score;
 
+    @Column(name = "sub_score")
+    private String subScores;
+
     public MatchTeam(Match match, Team team, int score) {
         this.match = match;
         this.team = team;
         this.score = score;
     }
 
-    public MatchTeam() {
+    public MatchTeam(){
+
     }
 }
