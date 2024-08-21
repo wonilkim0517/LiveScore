@@ -15,12 +15,12 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private final StompHandler stompHandler;
-    private final WebSocketHandshakeInterceptor handshakeInterceptor; // WebSocket 핸드셰이크 인터셉터
+    private final WebSocketHandshakeInterceptor handshakeInterceptor;
 
     @Override
     public void configureMessageBroker(MessageBrokerRegistry config) {
         config.enableSimpleBroker("/sub", "/topic");
-        config.setApplicationDestinationPrefixes("/pub", "/app");
+        config.setApplicationDestinationPrefixes("/pub");
     }
 
     @Override
@@ -28,7 +28,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         registry.addEndpoint("/ws-stomp")
                 .setAllowedOriginPatterns("*")
                 .addInterceptors(handshakeInterceptor) // 인터셉터 추가
-                .withSockJS();
+                .withSockJS(); // SockJS 사용 설정
     }
 
     @Override
@@ -36,3 +36,4 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         registration.interceptors(stompHandler);
     }
 }
+

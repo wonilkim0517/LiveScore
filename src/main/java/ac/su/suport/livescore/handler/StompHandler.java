@@ -10,10 +10,7 @@ import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.ChannelInterceptor;
-
 import org.springframework.stereotype.Component;
-
-import java.security.Principal;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -27,48 +24,51 @@ public class StompHandler implements ChannelInterceptor {
     public Message<?> preSend(Message<?> message, MessageChannel channel) {
         StompHeaderAccessor accessor = StompHeaderAccessor.wrap(message);
 
-        if (StompCommand.SUBSCRIBE == accessor.getCommand()) {
+        if (StompCommand.CONNECT == accessor.getCommand()) {
+            log.info("CONNECT");
+            // 연결 시 특별한 처리가 필요하면 여기에 구현
+        } else if (StompCommand.SUBSCRIBE == accessor.getCommand()) {
             String sessionId = (String) message.getHeaders().get("simpSessionId");
             String destination = accessor.getDestination();
             String roomId = chatService.getRoomId(destination);
 
-            if (roomId == null) {
-                log.warn("Room ID가 null입니다. 구독 처리 중단: Session ID: {}", sessionId);
-                return message;
+            log.info("SUBSCRIBE: SessionId: {}, RoomId: {}", sessionId, roomId);
+
+            chatRoomRepository.setUserEnterInfo(sessionId, roomId);
+            chatRoomRepository.plusUserCount(roomId);
+
+            String nickname = (String) accessor.getSessionAttributes().get("nickname");
+            if (nickname == null) {
+                log.warn("Nickname is null in session attributes for session ID: {}", sessionId);
+                nickname = "Anonymous";
             }
 
-            if (!chatRoomRepository.isUserAlreadySubscribed(sessionId, roomId)) {
-                log.info("SUBSCRIBE: Session ID: {}, Room ID: {}", sessionId, roomId);
-                chatRoomRepository.setUserEnterInfo(sessionId, roomId);
-                chatRoomRepository.plusUserCount(roomId);
+            chatService.sendChatMessage(ChatMessage.builder()
+                    .type(ChatMessage.MessageType.JOIN)
+                    .roomId(roomId)
+                    .sender(nickname)
+                    .build());
 
-                // 사용자 정보 세션에서 가져오기
-                Principal userPrincipal = accessor.getUser();
-                String name = "UnknownUser";
-                if (userPrincipal != null) {
-                    name = userPrincipal.getName();
-                } else {
-                    // 핸드셰이크 시점에 세션에 저장된 사용자 정보 사용
-                    name = (String) accessor.getSessionAttributes().get("username");
-                }
-
-                chatService.sendChatMessage(ChatMessage.builder()
-                        .type(ChatMessage.MessageType.JOIN)
-                        .roomId(roomId)
-                        .sender(name)
-                        .build());
-
-                log.info("User {} subscribed to room {}. Current user count: {}", name, roomId, chatRoomRepository.getUserCount(roomId));
-            } else {
-                log.info("Session ID: {} already subscribed to room ID: {}", sessionId, roomId);
-            }
+            log.info("User {} subscribed to room {}. Current user count: {}", nickname, roomId, chatRoomRepository.getUserCount(roomId));
         } else if (StompCommand.DISCONNECT == accessor.getCommand()) {
             String sessionId = (String) message.getHeaders().get("simpSessionId");
             String roomId = chatRoomRepository.getUserEnterRoomId(sessionId);
+
             if (roomId != null) {
                 chatRoomRepository.minusUserCount(roomId);
+                String nickname = (String) accessor.getSessionAttributes().get("nickname");
+                if (nickname == null) {
+                    nickname = "Anonymous";
+                }
+
+                chatService.sendChatMessage(ChatMessage.builder()
+                        .type(ChatMessage.MessageType.QUIT)
+                        .roomId(roomId)
+                        .sender(nickname)
+                        .build());
+
                 chatRoomRepository.removeUserEnterInfo(sessionId);
-                log.info("User disconnected from room {}. Current user count: {}", roomId, chatRoomRepository.getUserCount(roomId));
+                log.info("User {} disconnected from room {}. Current user count: {}", nickname, roomId, chatRoomRepository.getUserCount(roomId));
             }
         }
 

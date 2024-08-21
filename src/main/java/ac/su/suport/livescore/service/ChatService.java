@@ -7,6 +7,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.listener.ChannelTopic;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 @RequiredArgsConstructor
@@ -29,19 +31,31 @@ public class ChatService {
     }
 
     public void sendChatMessage(ChatMessage chatMessage) {
-        chatMessage.setUserCount(chatRoomRepository.getUserCount(chatMessage.getRoomId()));
-
-        if (ChatMessage.MessageType.JOIN.equals(chatMessage.getType())) {
-            chatMessage.setMessage(chatMessage.getNickname() + "님이 방에 입장했습니다.");
-            chatMessage.setSender("[알림]");
-        } else if (ChatMessage.MessageType.TALK.equals(chatMessage.getType())) {
-            chatMessage.setSender(chatMessage.getNickname());
-        } else if (ChatMessage.MessageType.QUIT.equals(chatMessage.getType())) {
-            chatMessage.setMessage(chatMessage.getNickname() + "님이 방에서 나갔습니다.");
-            chatMessage.setSender("[알림]");
+        // 메시지 타입에 따라 메시지 내용 설정
+        switch (chatMessage.getType()) {
+            case JOIN:
+                chatMessage.setMessage(chatMessage.getNickname() + "님이 방에 입장했습니다.");
+                chatMessage.setSender("[알림]");
+                break;
+            case TALK:
+                chatMessage.setSender(chatMessage.getNickname());
+                break;
+            case QUIT:
+                chatMessage.setMessage(chatMessage.getNickname() + "님이 방에서 나갔습니다.");
+                chatMessage.setSender("[알림]");
+                break;
+            default:
+                logger.error("Unknown message type: {}", chatMessage.getType());
+                return; // 처리할 수 없는 메시지 타입이면 전송하지 않음
         }
 
-        logger.debug("Sending chat message to Redis: {}", chatMessage);
-        redisTemplate.convertAndSend(channelTopic.getTopic(), chatMessage);
+        // Redis로 메시지 발행
+        try {
+            logger.debug("Sending chat message to Redis: {}", chatMessage);
+            redisTemplate.convertAndSend(channelTopic.getTopic(), chatMessage);
+        } catch (Exception e) {
+            logger.error("Failed to send chat message: {}", e.getMessage(), e);
+        }
     }
+
 }

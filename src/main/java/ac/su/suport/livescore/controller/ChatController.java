@@ -22,7 +22,7 @@ public class ChatController {
     @MessageMapping("/chat/message/{matchId}")
     public void message(@DestinationVariable String matchId, ChatMessage message) {
         // 사용자 닉네임 설정
-        String nickname = message.getNickname();
+        String nickname = message.getSender();
         logger.debug("Received message from user: {}", nickname);
 
         message.setNickname(nickname);

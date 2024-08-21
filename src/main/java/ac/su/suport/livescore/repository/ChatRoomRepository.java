@@ -9,7 +9,6 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
 @Repository
 @RequiredArgsConstructor
@@ -71,7 +70,10 @@ public class ChatRoomRepository {
 
     // 사용자가 채팅방에 들어왔을 때의 정보 설정
     public void setUserEnterInfo(String sessionId, String roomId) {
-        hashOpsEnterInfo.put(ENTER_INFO, sessionId, roomId);
+        // 중복 방지를 위해 기존 정보 확인 후 설정
+        if (!isUserAlreadySubscribed(sessionId, roomId)) {
+            hashOpsEnterInfo.put(ENTER_INFO, sessionId, roomId);
+        }
     }
 
     // 특정 채팅방의 사용자 수 증가
@@ -93,6 +95,4 @@ public class ChatRoomRepository {
     public String getUserEnterRoomId(String sessionId) {
         return hashOpsEnterInfo.get(ENTER_INFO, sessionId);
     }
-
 }
-
