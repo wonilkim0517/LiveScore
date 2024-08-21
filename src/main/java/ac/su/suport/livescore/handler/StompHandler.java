@@ -13,8 +13,8 @@ import org.springframework.messaging.support.ChannelInterceptor;
 import org.springframework.stereotype.Component;
 
 @Slf4j
-@RequiredArgsConstructor
 @Component
+@RequiredArgsConstructor
 public class StompHandler implements ChannelInterceptor {
 
     private final ChatRoomRepository chatRoomRepository;
@@ -35,7 +35,7 @@ public class StompHandler implements ChannelInterceptor {
 
             if (!chatRoomRepository.isUserAlreadySubscribed(sessionId, roomId)) {
                 chatRoomRepository.setUserEnterInfo(sessionId, roomId);
-                long userCount = chatRoomRepository.plusUserCount(roomId);
+                int userCount = (int) chatRoomRepository.getUserCount(roomId);
 
                 String nickname = (String) accessor.getSessionAttributes().get("nickname");
                 if (nickname == null || nickname.trim().isEmpty()) {
@@ -45,19 +45,24 @@ public class StompHandler implements ChannelInterceptor {
                 chatService.sendChatMessage(ChatMessage.builder()
                         .type(ChatMessage.MessageType.JOIN)
                         .roomId(roomId)
-                        .sender(nickname)
+                        .sender("[알림]")
+                        .message(nickname + "님이 방에 입장했습니다.")
                         .nickname(nickname)
                         .userCount(userCount)
                         .build());
 
                 log.info("User {} subscribed to room {}. Current user count: {}", nickname, roomId, userCount);
+            } else {
+                log.info("User already subscribed: SessionId: {}, RoomId: {}", sessionId, roomId);
             }
         } else if (StompCommand.DISCONNECT == accessor.getCommand()) {
             String sessionId = (String) message.getHeaders().get("simpSessionId");
             String roomId = chatRoomRepository.getUserEnterRoomId(sessionId);
 
             if (roomId != null) {
-                long userCount = chatRoomRepository.minusUserCount(roomId);
+                chatRoomRepository.removeUserEnterInfo(sessionId);
+                int userCount = (int) chatRoomRepository.getUserCount(roomId);
+
                 String nickname = (String) accessor.getSessionAttributes().get("nickname");
                 if (nickname == null || nickname.trim().isEmpty()) {
                     nickname = "Anonymous";
@@ -66,12 +71,12 @@ public class StompHandler implements ChannelInterceptor {
                 chatService.sendChatMessage(ChatMessage.builder()
                         .type(ChatMessage.MessageType.QUIT)
                         .roomId(roomId)
-                        .sender(nickname)
+                        .sender("[알림]")
+                        .message(nickname + "님이 방에서 나갔습니다.")
                         .nickname(nickname)
                         .userCount(userCount)
                         .build());
 
-                chatRoomRepository.removeUserEnterInfo(sessionId);
                 log.info("User {} disconnected from room {}. Current user count: {}", nickname, roomId, userCount);
             }
         }

@@ -7,8 +7,7 @@ import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Repository;
 
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Repository
@@ -24,7 +23,7 @@ public class ChatRoomRepository {
     private HashOperations<String, String, String> hashOpsEnterInfo; // 사용자의 입장 정보 관리
     private HashOperations<String, String, Integer> hashOpsUserCount; // 사용자 수 관리
 
-    private final ConcurrentHashMap<String, ConcurrentHashMap<String, Boolean>> roomUsers = new ConcurrentHashMap<>();
+    private final Map<String, Set<String>> roomUsers = new ConcurrentHashMap<>();
 
 
     @PostConstruct
@@ -62,14 +61,18 @@ public class ChatRoomRepository {
     }
 
     // 사용자가 이미 구독되어 있는지 확인
-    public boolean isUserAlreadySubscribed(String sessionId, String roomId) {
-        return roomUsers.computeIfAbsent(roomId, k -> new ConcurrentHashMap<>()).containsKey(sessionId);
+    public synchronized boolean isUserAlreadySubscribed(String sessionId, String roomId) {
+        return roomUsers.getOrDefault(roomId, Collections.emptySet()).contains(sessionId);
     }
 
+
     // 사용자가 채팅방에 들어왔을 때의 정보 설정
-    public void setUserEnterInfo(String sessionId, String roomId) {
-        hashOpsEnterInfo.put(ENTER_INFO, sessionId, roomId);
-        roomUsers.computeIfAbsent(roomId, k -> new ConcurrentHashMap<>()).put(sessionId, true);
+    public synchronized void setUserEnterInfo(String sessionId, String roomId) {
+        if (!isUserAlreadySubscribed(sessionId, roomId)) {
+            hashOpsEnterInfo.put(ENTER_INFO, sessionId, roomId);
+            roomUsers.computeIfAbsent(roomId, k -> ConcurrentHashMap.newKeySet()).add(sessionId);
+            hashOpsUserCount.increment(USER_COUNT, roomId, 1);
+        }
     }
 
     // 특정 채팅방의 사용자 수 증가
@@ -85,27 +88,29 @@ public class ChatRoomRepository {
         return 0;
     }
 
+    // 특정 채팅방의 사용자 수 반환
+    public int getUserCount(String roomId) {
+        return Optional.ofNullable(hashOpsUserCount.get(USER_COUNT, roomId)).orElse(0);
+    }
 
     // 사용자가 채팅방에서 나갔을 때의 정보 삭제
-    public void removeUserEnterInfo(String sessionId) {
+    public synchronized void removeUserEnterInfo(String sessionId) {
         String roomId = hashOpsEnterInfo.get(ENTER_INFO, sessionId);
         if (roomId != null) {
             hashOpsEnterInfo.delete(ENTER_INFO, sessionId);
-            ConcurrentHashMap<String, Boolean> users = roomUsers.get(roomId);
+            Set<String> users = roomUsers.get(roomId);
             if (users != null) {
                 users.remove(sessionId);
                 if (users.isEmpty()) {
                     roomUsers.remove(roomId);
                 }
             }
+            Integer count = hashOpsUserCount.get(USER_COUNT, roomId);
+            if (count != null && count > 0) {
+                hashOpsUserCount.increment(USER_COUNT, roomId, -1);
+            }
         }
     }
-
-    // 특정 채팅방의 사용자 수 반환
-    public long getUserCount(String roomId) {
-        return Optional.ofNullable(hashOpsUserCount.get(USER_COUNT, roomId)).orElse(0);
-    }
-
 
     // 사용자가 입장한 방의 ID를 반환
     public String getUserEnterRoomId(String sessionId) {

@@ -34,7 +34,7 @@ public class ChatController {
         message.setRoomId(matchId);
 
         // 채팅방 인원수 세팅
-        long userCount = chatRoomRepository.getUserCount(matchId);
+        int userCount = (int) chatRoomRepository.getUserCount(matchId);
         logger.debug("Current user count in room {}: {}", matchId, userCount);
         message.setUserCount(userCount);
 

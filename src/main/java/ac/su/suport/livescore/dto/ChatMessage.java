@@ -17,10 +17,10 @@ public class ChatMessage {
     private String sender; // 메시지 보낸 사람 (username)
     private String nickname; // 보낸 사람의 닉네임
     private String message; // 메시지 내용
-    private long userCount; // 현재 접속자 수
+    private int userCount; // 현재 접속자 수
 
     @Builder
-    public ChatMessage(MessageType type, String roomId, String sender, String nickname, String message, long userCount) {
+    public ChatMessage(MessageType type, String roomId, String sender, String nickname, String message, int userCount) {
         this.type = type;
         this.roomId = roomId;
         this.sender = sender;

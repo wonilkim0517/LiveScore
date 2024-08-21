@@ -23,7 +23,7 @@ public class ChatRoom implements Serializable {
     private String name; // 채팅방 이름
 
     @Column(name = "user_count")
-    private Long userCount; // 현재 채팅방의 사용자 수
+    private Integer userCount; // 현재 채팅방의 사용자 수
 
     @OneToOne
     @JoinColumn(name = "stream_id")
@@ -33,7 +33,7 @@ public class ChatRoom implements Serializable {
     public ChatRoom(String roomId, String name) {
         this.roomId = roomId;
         this.name = name;
-        this.userCount = 0L; // 채팅방 생성 시 사용자 수는 0으로 초기화
+        this.userCount = 0; // 채팅방 생성 시 사용자 수는 0으로 초기화
     }
 
     // 채팅방을 생성하는 정적 메소드
