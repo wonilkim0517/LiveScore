@@ -23,7 +23,7 @@ public class WebSocketHandshakeInterceptor implements HandshakeInterceptor {
             User currentUser = (User) session.getAttribute("currentUser");
             if (currentUser != null) {
                 attributes.put("nickname", currentUser.getNickname());
-                attributes.put("userId", currentUser.getUserId());
+//                attributes.put("userId", currentUser.getUserId());
                 System.out.println("WebSocketHandshakeInterceptor: Nickname set to " + currentUser.getNickname());
             } else {
                 System.out.println("WebSocketHandshakeInterceptor: No current user in session");

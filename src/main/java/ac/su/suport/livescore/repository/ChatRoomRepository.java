@@ -9,6 +9,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Repository
 @RequiredArgsConstructor
@@ -22,6 +23,9 @@ public class ChatRoomRepository {
     private HashOperations<String, String, ChatRoom> hashOpsRoom; // 채팅방 정보 관리
     private HashOperations<String, String, String> hashOpsEnterInfo; // 사용자의 입장 정보 관리
     private HashOperations<String, String, Integer> hashOpsUserCount; // 사용자 수 관리
+
+    private final ConcurrentHashMap<String, ConcurrentHashMap<String, Boolean>> roomUsers = new ConcurrentHashMap<>();
+
 
     @PostConstruct
     private void init() {
@@ -57,39 +61,51 @@ public class ChatRoomRepository {
         return chatRoom;
     }
 
+    // 사용자가 이미 구독되어 있는지 확인
+    public boolean isUserAlreadySubscribed(String sessionId, String roomId) {
+        return roomUsers.computeIfAbsent(roomId, k -> new ConcurrentHashMap<>()).containsKey(sessionId);
+    }
+
+    // 사용자가 채팅방에 들어왔을 때의 정보 설정
+    public void setUserEnterInfo(String sessionId, String roomId) {
+        hashOpsEnterInfo.put(ENTER_INFO, sessionId, roomId);
+        roomUsers.computeIfAbsent(roomId, k -> new ConcurrentHashMap<>()).put(sessionId, true);
+    }
+
+    // 특정 채팅방의 사용자 수 증가
+    public long plusUserCount(String roomId) {
+        return hashOpsUserCount.increment(USER_COUNT, roomId, 1L);
+    }
+
+    public long minusUserCount(String roomId) {
+        long count = Optional.ofNullable(hashOpsUserCount.get(USER_COUNT, roomId)).orElse(0);
+        if (count > 0) {
+            return hashOpsUserCount.increment(USER_COUNT, roomId, -1L);
+        }
+        return 0;
+    }
+
+
+    // 사용자가 채팅방에서 나갔을 때의 정보 삭제
+    public void removeUserEnterInfo(String sessionId) {
+        String roomId = hashOpsEnterInfo.get(ENTER_INFO, sessionId);
+        if (roomId != null) {
+            hashOpsEnterInfo.delete(ENTER_INFO, sessionId);
+            ConcurrentHashMap<String, Boolean> users = roomUsers.get(roomId);
+            if (users != null) {
+                users.remove(sessionId);
+                if (users.isEmpty()) {
+                    roomUsers.remove(roomId);
+                }
+            }
+        }
+    }
+
     // 특정 채팅방의 사용자 수 반환
     public long getUserCount(String roomId) {
         return Optional.ofNullable(hashOpsUserCount.get(USER_COUNT, roomId)).orElse(0);
     }
 
-    // 사용자가 이미 구독되어 있는지 확인
-    public boolean isUserAlreadySubscribed(String sessionId, String roomId) {
-        String existingRoomId = hashOpsEnterInfo.get(ENTER_INFO, sessionId);
-        return roomId.equals(existingRoomId);
-    }
-
-    // 사용자가 채팅방에 들어왔을 때의 정보 설정
-    public void setUserEnterInfo(String sessionId, String roomId) {
-        // 중복 방지를 위해 기존 정보 확인 후 설정
-        if (!isUserAlreadySubscribed(sessionId, roomId)) {
-            hashOpsEnterInfo.put(ENTER_INFO, sessionId, roomId);
-        }
-    }
-
-    // 특정 채팅방의 사용자 수 증가
-    public void plusUserCount(String roomId) {
-        hashOpsUserCount.increment(USER_COUNT, roomId, 1);
-    }
-
-    // 특정 채팅방의 사용자 수 감소
-    public void minusUserCount(String roomId) {
-        hashOpsUserCount.increment(USER_COUNT, roomId, -1);
-    }
-
-    // 사용자가 채팅방에서 나갔을 때의 정보 삭제
-    public void removeUserEnterInfo(String sessionId) {
-        hashOpsEnterInfo.delete(ENTER_INFO, sessionId);
-    }
 
     // 사용자가 입장한 방의 ID를 반환
     public String getUserEnterRoomId(String sessionId) {

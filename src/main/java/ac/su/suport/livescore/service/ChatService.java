@@ -19,7 +19,6 @@ public class ChatService {
 
     private final ChannelTopic channelTopic;
     private final RedisTemplate redisTemplate;
-    private final ChatRoomRepository chatRoomRepository;
 
     public String getRoomId(String destination) {
         int lastIndex = destination.lastIndexOf('/');
@@ -38,15 +37,12 @@ public class ChatService {
                 chatMessage.setSender("[알림]");
                 break;
             case TALK:
-                chatMessage.setSender(chatMessage.getNickname());
+                // TALK 타입일 때는 아무 것도 변경하지 않는다.
                 break;
             case QUIT:
                 chatMessage.setMessage(chatMessage.getNickname() + "님이 방에서 나갔습니다.");
                 chatMessage.setSender("[알림]");
                 break;
-            default:
-                logger.error("Unknown message type: {}", chatMessage.getType());
-                return; // 처리할 수 없는 메시지 타입이면 전송하지 않음
         }
 
         // Redis로 메시지 발행

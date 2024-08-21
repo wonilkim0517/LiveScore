@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
+import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import org.springframework.stereotype.Controller;
 
 @RequiredArgsConstructor
@@ -20,11 +21,15 @@ public class ChatController {
     private final ChatService chatService;
 
     @MessageMapping("/chat/message/{matchId}")
-    public void message(@DestinationVariable String matchId, ChatMessage message) {
-        // 사용자 닉네임 설정
-        String nickname = message.getSender();
+    public void message(@DestinationVariable String matchId, ChatMessage message, SimpMessageHeaderAccessor headerAccessor) {
+        String sessionId = headerAccessor.getSessionId();
+        String nickname = (String) headerAccessor.getSessionAttributes().get("nickname");
+        if (nickname == null || nickname.trim().isEmpty()) {
+            nickname = "Anonymous";
+        }
         logger.debug("Received message from user: {}", nickname);
 
+        message.setSender(nickname);
         message.setNickname(nickname);
         message.setRoomId(matchId);
 
