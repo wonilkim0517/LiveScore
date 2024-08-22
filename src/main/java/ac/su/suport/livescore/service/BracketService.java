@@ -30,6 +30,88 @@ public class BracketService {
     private final TeamRepository teamRepository;
     private final MatchTeamRepository matchTeamRepository;
 
+
+    public List<TournamentMatchDTO> getSportTournamentBrackets(String sport) {
+        List<Match> matches = matchRepository.findBySportAndMatchTypeOrderByRoundDesc(sport, MatchType.TOURNAMENT);
+        List<TournamentMatchDTO> dtos = matches.stream()
+                .map(this::convertToTournamentMatchDTO)
+                .collect(Collectors.toList());
+
+        updateNextMatchIds(dtos);
+        createNextRoundMatchesIfNeeded(dtos, sport);
+        return dtos;
+    }
+
+    private void createNextRoundMatchesIfNeeded(List<TournamentMatchDTO> matches, String sport) {
+        Map<String, List<TournamentMatchDTO>> roundMatches = matches.stream()
+                .collect(Collectors.groupingBy(TournamentMatchDTO::getTournamentRoundText));
+
+        List<TournamentRound> rounds = Arrays.asList(TournamentRound.values());
+        for (int i = 0; i < rounds.size() - 1; i++) {
+            TournamentRound currentRound = rounds.get(i);
+            TournamentRound nextRound = rounds.get(i + 1);
+
+            List<TournamentMatchDTO> currentMatches = roundMatches.get(currentRound.name());
+            List<TournamentMatchDTO> nextMatches = roundMatches.get(nextRound.name());
+
+            if (currentMatches != null && (nextMatches == null || nextMatches.isEmpty())) {
+                boolean allMatchesFinished = currentMatches.stream()
+                        .allMatch(match -> "PAST".equals(match.getState()));
+
+                if (allMatchesFinished) {
+                    createNextRoundMatches(currentMatches, nextRound, sport);
+                }
+            }
+        }
+    }
+    private void createNextRoundMatches(List<TournamentMatchDTO> currentMatches, TournamentRound nextRound, String sport) {
+        for (int i = 0; i < currentMatches.size(); i += 2) {
+            TournamentMatchDTO match1 = currentMatches.get(i);
+            TournamentMatchDTO match2 = i + 1 < currentMatches.size() ? currentMatches.get(i + 1) : null;
+
+            ParticipantDTO winner1 = getWinner(match1);
+            ParticipantDTO winner2 = match2 != null ? getWinner(match2) : null;
+
+            if (winner1 != null && winner2 != null) {
+                createNewMatch(nextRound, sport, winner1, winner2);
+            }
+        }
+    }
+
+    private ParticipantDTO getWinner(TournamentMatchDTO match) {
+        return match.getParticipants().stream()
+                .filter(ParticipantDTO::isWinner)
+                .findFirst()
+                .orElse(null);
+    }
+
+    private void createNewMatch(TournamentRound round, String sport, ParticipantDTO participant1, ParticipantDTO participant2) {
+        Match newMatch = new Match();
+        newMatch.setSport(sport);
+        newMatch.setMatchType(MatchType.TOURNAMENT);
+        newMatch.setRound(round.name());
+        newMatch.setStatus(MatchStatus.FUTURE);
+        newMatch.setDate(LocalDate.now().plusDays(7)); // 예시: 일주일 후로 설정
+        newMatch.setStartTime(LocalTime.of(18, 0));
+
+        newMatch = matchRepository.save(newMatch);
+
+        createMatchTeam(newMatch, participant1);
+        createMatchTeam(newMatch, participant2);
+    }
+
+    private void createMatchTeam(Match match, ParticipantDTO participant) {
+        Team team = teamRepository.findById(Long.parseLong(participant.getId()))
+                .orElseThrow(() -> new EntityNotFoundException("Team not found"));
+
+        MatchTeam matchTeam = new MatchTeam();
+        matchTeam.setMatch(match);
+        matchTeam.setTeam(team);
+        matchTeam.setScore(0);
+
+        matchTeamRepository.save(matchTeam);
+    }
+
     // 새로 추가된 초기화 메서드
     @Transactional
     public List<TournamentMatchDTO> initializeTournament(String sport, TournamentRound startingRound) {
@@ -109,28 +191,17 @@ public class BracketService {
         return groupedTeams;
     }
 
-    public List<TournamentMatchDTO> getSportTournamentBrackets(String sport) {
-        List<Match> matches = matchRepository.findBySportAndMatchTypeOrderByRoundDesc(sport, MatchType.TOURNAMENT);
-        List<TournamentMatchDTO> dtos = matches.stream()
-                .map(this::convertToTournamentMatchDTO)
-                .collect(Collectors.toList());
-
-        updateNextMatchIds(dtos);
-        return dtos;
-    }
-
     private void updateNextMatchIds(List<TournamentMatchDTO> matches) {
-        List<String> roundOrder = Arrays.asList("16강", "8강", "4강", "결승");
-
         Map<String, List<TournamentMatchDTO>> roundMatches = matches.stream()
                 .collect(Collectors.groupingBy(TournamentMatchDTO::getTournamentRoundText));
 
-        for (int i = 0; i < roundOrder.size() - 1; i++) {
-            String currentRound = roundOrder.get(i);
-            String nextRound = roundOrder.get(i + 1);
+        List<TournamentRound> rounds = Arrays.asList(TournamentRound.values());
+        for (int i = 0; i < rounds.size() - 1; i++) {
+            TournamentRound currentRound = rounds.get(i);
+            TournamentRound nextRound = rounds.get(i + 1);
 
-            List<TournamentMatchDTO> currentMatches = roundMatches.get(currentRound);
-            List<TournamentMatchDTO> nextMatches = roundMatches.get(nextRound);
+            List<TournamentMatchDTO> currentMatches = roundMatches.get(currentRound.name());
+            List<TournamentMatchDTO> nextMatches = roundMatches.get(nextRound.name());
 
             if (currentMatches != null && nextMatches != null) {
                 for (int j = 0; j < currentMatches.size(); j += 2) {
@@ -144,9 +215,8 @@ public class BracketService {
                 }
             }
         }
-    }
 
-    @Transactional
+}@Transactional
     public BracketDTO createLeagueBracket(BracketDTO bracketDTO) {
         Match match = convertToMatch(bracketDTO);
         match.setMatchTeams(new ArrayList<>());
@@ -398,25 +468,68 @@ public class BracketService {
         TournamentMatchDTO dto = new TournamentMatchDTO();
         dto.setId(match.getMatchId());
         dto.setName(match.getRound() + " - Match " + match.getMatchId());
-        dto.setNextMatchId(null); // This will be set in updateNextMatchIds method
         dto.setTournamentRoundText(match.getRound());
         dto.setStartTime(match.getDate().atTime(match.getStartTime()).toString());
         dto.setState(match.getStatus().toString());
 
-        List<ParticipantDTO> participants = new ArrayList<>();
-        for (MatchTeam matchTeam : match.getMatchTeams()) {
-            ParticipantDTO participant = new ParticipantDTO();
-            participant.setId(matchTeam.getTeam().getTeamId().toString());
-            participant.setResultText(matchTeam.getScore() != null ? matchTeam.getScore().toString() : "");
-            participant.setIsWinner(determineWinner(match, matchTeam));
-            participant.setStatus(match.getStatus().toString());
-            participant.setName(String.valueOf(matchTeam.getTeam().getDepartment()));
-            participant.setImage("userImage"); // 실제 이미지 URL로 대체 필요
-            participants.add(participant);
-        }
+        List<ParticipantDTO> participants = match.getMatchTeams().stream()
+                .map(this::convertToParticipantDTO)
+                .collect(Collectors.toList());
         dto.setParticipants(participants);
 
         return dto;
+    }
+
+    private ParticipantDTO convertToParticipantDTO(MatchTeam matchTeam) {
+        ParticipantDTO dto = new ParticipantDTO();
+        dto.setId(matchTeam.getTeam().getTeamId().toString());
+        dto.setResultText(matchTeam.getScore() != null ? matchTeam.getScore().toString() : "");
+        dto.setStatus(matchTeam.getMatch().getStatus().toString());
+        dto.setName(convertToKoreanDepartmentName(matchTeam.getTeam().getDepartment().name()));
+        dto.setImage("userImage");
+        dto.setIsWinner(determineWinner(matchTeam));
+        return dto;
+    }
+
+    private String convertToKoreanDepartmentName(String englishName) {
+        Map<String, String> departmentNameMap = new HashMap<>();
+        departmentNameMap.put("THEOLOGY", "신학과");
+        departmentNameMap.put("NURSING", "간호학과");
+        departmentNameMap.put("PHARMACY", "약학과");
+        departmentNameMap.put("EARLY_CHILDHOOD_EDUCATION", "유아교육과");
+        departmentNameMap.put("MUSIC", "음악학과");
+        departmentNameMap.put("ART_AND_DESIGN", "미술디자인학과");
+        departmentNameMap.put("PHYSICAL_EDUCATION", "체육학과");
+        departmentNameMap.put("SOCIAL_WELFARE", "사회복지학과");
+        departmentNameMap.put("COUNSELING_PSYCHOLOGY", "상담심리학과");
+        departmentNameMap.put("ENGLISH_LITERATURE", "영어영문학과");
+        departmentNameMap.put("AVIATION_TOURISM_FOREIGN_LANGUAGES", "항공관광외국어학과");
+        departmentNameMap.put("GLOBAL_KOREAN_STUDIES", "글로벌한국학과");
+        departmentNameMap.put("BUSINESS_ADMINISTRATION", "경영학과");
+        departmentNameMap.put("COMPUTER_SCIENCE", "컴퓨터공학과");
+        departmentNameMap.put("AI_CONVERGENCE", "AI융합학과");
+        departmentNameMap.put("FOOD_NUTRITION", "식품영양학과");
+        departmentNameMap.put("HEALTH_MANAGEMENT", "보건관리학과");
+        departmentNameMap.put("ENVIRONMENTAL_DESIGN_HORTICULTURE", "환경디자인원예학과");
+        departmentNameMap.put("ANIMAL_RESOURCE_SCIENCE", "동물자원학과");
+        departmentNameMap.put("CHEMISTRY_LIFE_SCIENCE", "화학생명과학과");
+        departmentNameMap.put("BIO_CONVERGENCE_ENGINEERING", "바이오융합공학과");
+        departmentNameMap.put("ARCHITECTURE", "건축학과");
+        departmentNameMap.put("PHYSICAL_THERAPY", "물리치료학과");
+        departmentNameMap.put("DATA_CLOUD_ENGINEERING", "데이터클라우드공학과");
+        departmentNameMap.put("FACULTY_TEAM", "교직원팀");
+
+        return departmentNameMap.getOrDefault(englishName, englishName);
+    }
+
+    private boolean determineWinner(MatchTeam matchTeam) {
+        if (matchTeam.getMatch().getStatus() != MatchStatus.PAST) {
+            return false;
+        }
+        return matchTeam.getMatch().getMatchTeams().stream()
+                .max(Comparator.comparing(MatchTeam::getScore))
+                .map(winner -> winner.equals(matchTeam))
+                .orElse(false);
     }
 
     private boolean determineWinner(Match match, MatchTeam matchTeam) {
