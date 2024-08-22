@@ -8,6 +8,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface MatchRepository extends JpaRepository<Match, Long> {
@@ -21,6 +22,8 @@ public interface MatchRepository extends JpaRepository<Match, Long> {
     List<Match> findByDateOrderByDateDesc(LocalDate date);
 
     List<Match> findBySportAndDateOrderByDateDesc(String sport, LocalDate date);
+
+    Optional<Match> findByRoundAndSport(String round, String sport);
 
     @Query("SELECT DISTINCT m FROM Match m JOIN m.matchTeams mt JOIN mt.team t WHERE t.department = :department ORDER BY m.date DESC")
     List<Match> findByDepartmentOrderByDateDesc(@Param("department") String department);

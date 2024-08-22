@@ -10,6 +10,7 @@ public class ParticipantDTO {
     private String status;
     private String name;
     private String image;
+    private String SubScore;
 
     public void setIsWinner(boolean isWinner) {
         this.isWinner = isWinner;
