@@ -1,13 +1,11 @@
 package ac.su.suport.livescore.controller;
 
-import ac.su.suport.livescore.constant.TournamentRound;
 import ac.su.suport.livescore.domain.LiveVideoStream;
 import ac.su.suport.livescore.domain.Match;
 import ac.su.suport.livescore.domain.Video;
 import ac.su.suport.livescore.dto.MatchModificationDTO;
 import ac.su.suport.livescore.dto.MatchSummaryDTO;
-import ac.su.suport.livescore.dto.TournamentMatchDTO;
-import ac.su.suport.livescore.service.BracketService;
+import ac.su.suport.livescore.logger.AdminLogger;
 import ac.su.suport.livescore.service.LiveVideoStreamService;
 import ac.su.suport.livescore.service.MatchService;
 import ac.su.suport.livescore.service.VideoService;
@@ -28,7 +26,6 @@ import java.util.List;
 public class MatchController {
 
     private final MatchService matchService;
-    private final BracketService bracketService;
     private final LiveVideoStreamService liveVideoStreamService;
     private final VideoService videoService;
 
@@ -67,6 +64,7 @@ public class MatchController {
     @PostMapping
     public ResponseEntity<MatchModificationDTO> createMatch(@RequestBody MatchModificationDTO matchModificationDTO) {
         MatchModificationDTO createdMatch = matchService.createMatch(matchModificationDTO);
+        AdminLogger.logRequest("CREATE", "/api/matches", "POST", "admin", matchModificationDTO.toString());
         return new ResponseEntity<>(createdMatch, HttpStatus.CREATED);
     }
 
@@ -86,5 +84,4 @@ public class MatchController {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
     }
-
 }
