@@ -26,7 +26,7 @@ public class BracketController {
     }
 
     @GetMapping("/tournament/{sport}")
-    public ResponseEntity<List<TournamentMatchDTO>> getSportTournamentBrackets(@PathVariable("sport") String sport) {
+    public ResponseEntity<List<TournamentMatchDTO>> getSportTournamentBrackets(@PathVariable String sport) {
         List<TournamentMatchDTO> tournamentData = bracketService.getSportTournamentBrackets(sport);
         return new ResponseEntity<>(tournamentData, HttpStatus.OK);
     }

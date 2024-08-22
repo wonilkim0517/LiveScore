@@ -12,6 +12,7 @@ import ac.su.suport.livescore.service.LiveVideoStreamService;
 import ac.su.suport.livescore.service.MatchService;
 import ac.su.suport.livescore.service.VideoService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -36,7 +37,7 @@ public class MatchController {
     @GetMapping("/all")
     public ResponseEntity<List<MatchSummaryDTO.Response>> getAllMatches() {
         List<MatchSummaryDTO.Response> matches = matchService.getAllMatches();
-        return new ResponseEntity<>(matches, HttpStatus.OK);
+        return ResponseEntity.ok(matches);
     }
 
     @GetMapping("/view")
