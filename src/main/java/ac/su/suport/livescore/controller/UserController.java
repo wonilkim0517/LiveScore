@@ -63,11 +63,15 @@ public class UserController {
             return ResponseEntity.badRequest().body(Map.of("error", "유효하지 않은 이메일 혹은 비밀번호입니다."));
         }
 
+        // 여기서 user.getNickname()을 로그에 찍어 확인
+        System.out.println("User nickname: " + user.getNickname());
+
         session.setAttribute("currentUser", user);
 
         Map<String, String> response = new HashMap<>();
         response.put("message", "로그인 성공");
         response.put("role", user.getRole().name());
+        response.put("nickname", user.getNickname());  // 닉네임 추가
 
         return ResponseEntity.ok(response);
     }
