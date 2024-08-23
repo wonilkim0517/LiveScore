@@ -461,7 +461,7 @@ public class BracketService {
         MatchTeam matchTeam = new MatchTeam();
         matchTeam.setMatch(match);
         matchTeam.setTeam(team);
-        matchTeam.setScore(isWinner ? Integer.parseInt(participant.getResultText()) : 0);
+        matchTeam.setScore(0);  // 초기 점수를 0으로 설정
 
         matchTeamRepository.save(matchTeam);
     }
@@ -485,21 +485,23 @@ public class BracketService {
     private ParticipantDTO convertToParticipantDTO(MatchTeam matchTeam) {
         ParticipantDTO dto = new ParticipantDTO();
         dto.setId(matchTeam.getTeam().getTeamId().toString());
-        dto.setResultText(matchTeam.getScore() != null ? matchTeam.getScore().toString() : "0");
-        dto.setStatus(matchTeam.getMatch().getStatus().toString());
         dto.setName(matchTeam.getTeam().getDepartment().getKoreanName());
         dto.setImage("userImage");
         dto.setSubScore(matchTeam.getSubScores());
 
-        if (matchTeam.getMatch().getStatus() == MatchStatus.PAST) {
-            Boolean isWinner = determineWinner(matchTeam);
-            dto.setWinner(isWinner != null ? isWinner : false);
-        } else {
+        if (matchTeam.getMatch().getStatus() == MatchStatus.FUTURE) {
+            dto.setResultText("0");  // 초기값을 0으로 설정
+            dto.setStatus("FUTURE");
             dto.setWinner(null);
+        } else {
+            dto.setResultText(matchTeam.getScore() != null ? matchTeam.getScore().toString() : "0");
+            dto.setStatus(matchTeam.getMatch().getStatus().toString());
+            dto.setWinner(determineWinner(matchTeam));
         }
 
         return dto;
     }
+
 
     private Boolean determineWinner(MatchTeam matchTeam) {
         Match match = matchTeam.getMatch();
@@ -555,6 +557,18 @@ public class BracketService {
                 match.setStatus(MatchStatus.FUTURE);
                 match.setDate(LocalDate.now().plusDays(i));
                 match.setStartTime(LocalTime.of(18, 0));
+
+                // 초기 MatchTeam 생성 및 점수 설정
+                MatchTeam team1 = new MatchTeam();
+                team1.setMatch(match);
+                team1.setScore(0);
+
+                MatchTeam team2 = new MatchTeam();
+                team2.setMatch(match);
+                team2.setScore(0);
+
+                match.setMatchTeams(Arrays.asList(team1, team2));
+
                 tournamentMatches.add(match);
             }
         }
