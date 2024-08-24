@@ -47,7 +47,8 @@ public class MatchSummaryDTO {
         private String round;
         private MatchResult result;
         private MatchType matchType;
-
+        private String teamOneSubScores;
+        private String teamTwoSubScores;
 
     }
 }

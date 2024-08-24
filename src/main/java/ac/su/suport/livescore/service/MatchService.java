@@ -110,6 +110,8 @@ public class MatchService {
             // For LIVE or FUTURE matches, only update non-score information
             matchModificationDTO.setTeamScore1(match.getMatchTeams().get(0).getScore());
             matchModificationDTO.setTeamScore2(match.getMatchTeams().get(1).getScore());
+            matchModificationDTO.setTeamOneSubScores(match.getMatchTeams().get(0).getSubScores());  // 추가
+            matchModificationDTO.setTeamTwoSubScores(match.getMatchTeams().get(1).getSubScores());  // 추가
         }
 
         Match updatedMatch = matchRepository.save(match);
@@ -188,18 +190,20 @@ public class MatchService {
     private void updateMatchTeams(Match match, MatchModificationDTO matchModificationDTO) {
         List<MatchTeam> matchTeams = match.getMatchTeams();
         if (matchTeams.size() >= 2) {
-            updateTeam(matchTeams.get(0), matchModificationDTO.getTeamId1(), matchModificationDTO.getTeamScore1());
-            updateTeam(matchTeams.get(1), matchModificationDTO.getTeamId2(), matchModificationDTO.getTeamScore2());
+            updateTeam(matchTeams.get(0), matchModificationDTO.getTeamId1(), matchModificationDTO.getTeamScore1(), matchModificationDTO.getTeamOneSubScores());
+            updateTeam(matchTeams.get(1), matchModificationDTO.getTeamId2(), matchModificationDTO.getTeamScore2(), matchModificationDTO.getTeamTwoSubScores());
         }
     }
 
-    private void updateTeam(MatchTeam matchTeam, Long newTeamId, Integer newScore) {
+
+    private void updateTeam(MatchTeam matchTeam, Long newTeamId, Integer newScore, String newSubScores) {
         if (!matchTeam.getTeam().getTeamId().equals(newTeamId)) {
             Team newTeam = teamRepository.findById(newTeamId)
                     .orElseThrow(() -> new RuntimeException("Team not found"));
             matchTeam.setTeam(newTeam);
         }
         matchTeam.setScore(newScore);
+        matchTeam.setSubScores(newSubScores);  // 추가
         matchTeamRepository.save(matchTeam);
     }
 
@@ -224,6 +228,8 @@ public class MatchService {
             dto.setDepartment2(String.valueOf(team2.getTeam().getDepartment()));
             dto.setTeamScore1(team1.getScore() != null ? team1.getScore() : 0);
             dto.setTeamScore2(team2.getScore() != null ? team2.getScore() : 0);
+            dto.setTeamOneSubScores(team1.getSubScores());  // 추가
+            dto.setTeamTwoSubScores(team2.getSubScores());  // 추가
         }
 
         if (match.getStatus() == MatchStatus.PAST) {
