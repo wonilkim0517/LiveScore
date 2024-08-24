@@ -31,4 +31,7 @@ public class MatchModificationDTO {
     private MatchStatus matchStatus;
     private String groupName;
     private String round;
+    private String teamOneSubScores;
+    private String teamTwoSubScores;
+
 }

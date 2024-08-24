@@ -189,6 +189,7 @@ public class BracketService {
         return convertToBracketDTO(match);
     }
 
+
     @Transactional
     public void deleteTournamentBracket(Long id) {
         Match match = matchRepository.findById(id)
@@ -604,6 +605,8 @@ public class BracketService {
             dto.setDepartment2(team2.getTeam().getDepartment().name());
             dto.setTeamScore1(team1.getScore());
             dto.setTeamScore2(team2.getScore());
+            dto.setTeamOneSubScores(team1.getSubScores());  // 추가
+            dto.setTeamTwoSubScores(team2.getSubScores());  // 추가
 
             dto.setResult(determineMatchResult(team1.getScore(), team2.getScore(), match.getStatus()));
         }
