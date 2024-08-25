@@ -1,14 +1,14 @@
 package ac.su.suport.livescore.logger;
+
 import ac.su.suport.livescore.util.CustomIpUtil;
 import jakarta.servlet.http.HttpServletRequest;
-
-import org.slf4j.LoggerFactory;
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
 
-public class AdminLogger {
-    private static final Logger logger = LoggerFactory.getLogger(AdminLogger.class.getName());
+public class UserLogger {
+    private static final Logger logger = LoggerFactory.getLogger(UserLogger.class.getName());
 
     //    logtype : 로그 타입
     //    o : 성공(ok) / e: 실패(error) / w: 경고(warning) / i: 정보(info)

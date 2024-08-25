@@ -21,10 +21,22 @@
     </appender>
 
 
-    <appender name="MATCH_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>logs/match.log</file>
+    <appender name="ADMIN_LOG_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>logs/admin-log.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <fileNamePattern>logs/post-report.%d{yyyy-MM-dd}.log</fileNamePattern>
+            <fileNamePattern>logs/admin-log.%d{yyyy-MM-dd}.log</fileNamePattern>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>1GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>%-5level %d{yyyy-MM-dd HH:mm:ss} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <appender name="USER_LOG_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>logs/user-log.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>logs/user-log.%d{yyyy-MM-dd}.log</fileNamePattern>
             <maxHistory>30</maxHistory>
             <totalSizeCap>1GB</totalSizeCap>
         </rollingPolicy>
@@ -42,7 +54,11 @@
 
 <!--    AdminLogger에 대한 slfj로거 -->
     <logger name="ac.su.suport.livescore.logger.AdminLogger" level="INFO" additivity="false">
-        <appender-ref ref="MATCH_FILE" />
+        <appender-ref ref="ADMIN_LOG_FILE" />
+    </logger>
+
+    <logger name="ac.su.suport.livescore.logger.UserLogger" level="INFO" additivity="false">
+        <appender-ref ref="USER_LOG_FILE" />
     </logger>
 
 
