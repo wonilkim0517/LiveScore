@@ -6,6 +6,7 @@ import ac.su.suport.livescore.logger.AdminLogger;  // AdminLogger 추가
 import ac.su.suport.livescore.logger.UserLogger;  // UserLogger 추가
 import ac.su.suport.livescore.repository.ChatRoomRepository;
 import ac.su.suport.livescore.service.BanService;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
