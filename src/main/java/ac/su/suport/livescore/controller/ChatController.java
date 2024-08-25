@@ -2,39 +2,53 @@ package ac.su.suport.livescore.controller;
 
 import ac.su.suport.livescore.dto.ChatMessage;
 import ac.su.suport.livescore.logger.UserLogger;  // UserLogger 추가
+import ac.su.suport.livescore.logger.AdminLogger;  // AdminLogger 추가
 import ac.su.suport.livescore.repository.ChatRoomRepository;
 import ac.su.suport.livescore.service.ChatService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.redis.listener.ChannelTopic;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
+import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import org.springframework.stereotype.Controller;
-
-import jakarta.servlet.http.HttpServletRequest;  // HttpServletRequest 추가
 
 @RequiredArgsConstructor
 @Controller
 public class ChatController {
 
+    private static final Logger logger = LoggerFactory.getLogger(ChatController.class);
+
     private final ChatRoomRepository chatRoomRepository;
-    private final ChannelTopic channelTopic;
     private final ChatService chatService;
 
-    /**
-     * websocket "/pub/chat/message"로 들어오는 메시징을 처리한다.
-     */
-    @MessageMapping("/chat/message")
-    public void message(ChatMessage message, HttpServletRequest request) {
+    @MessageMapping("/chat/message/{matchId}")
+    public void message(@DestinationVariable String matchId, ChatMessage message, SimpMessageHeaderAccessor headerAccessor) {
+        String sessionId = headerAccessor.getSessionId();
+        String nickname = (String) headerAccessor.getSessionAttributes().get("nickname");
+        if (nickname == null || nickname.trim().isEmpty()) {
+            nickname = "Anonymous";
+        }
+        
+        // 사용자 로깅 추가: 메시지 수신
+        UserLogger.logRequest("i", "메시지 수신", "/chat/message/" + matchId, "MESSAGE", "user", "Received message from user: " + nickname, headerAccessor.getSessionAttributes());
 
-        // 로그인 회원 정보로 대화명 설정
-        String nickname = message.getSender(); // or other method to get the sender name
+        logger.debug("Received message from user: {}", nickname);
+
         message.setSender(nickname);
-        // 채팅방 인원수 세팅
-        message.setUserCount(chatRoomRepository.getUserCount(message.getRoomId()));
+        message.setNickname(nickname);
+        message.setRoomId(matchId);
 
-        // 사용자 로깅 추가: 채팅 메시지 발송
-        UserLogger.logRequest("i", "채팅 메시지 발송", "/pub/chat/message", "MESSAGE", nickname, "Room ID: " + message.getRoomId() + ", Message: " + message.getMessage(), request);
+        // 채팅방 인원수 세팅
+        int userCount = (int) chatRoomRepository.getUserCount(matchId);
+        logger.debug("Current user count in room {}: {}", matchId, userCount);
+        message.setUserCount(userCount);
+
+        // 사용자 로깅 추가: 메시지 전송
+        UserLogger.logRequest("i", "메시지 전송", "/chat/message/" + matchId, "MESSAGE", "user", "Message sent to room " + matchId + " by user: " + nickname, headerAccessor.getSessionAttributes());
 
         // Websocket 에 발행된 메시지를 redis 로 발행 (publish)
         chatService.sendChatMessage(message);
+        logger.info("Message sent to room {}: {}", matchId, message);
     }
 }

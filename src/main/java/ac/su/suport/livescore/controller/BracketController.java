@@ -35,7 +35,7 @@ public class BracketController {
 
     // 특정 스포츠의 토너먼트 브래킷 데이터를 조회합니다.
     @GetMapping("/tournament/{sport}")
-    public ResponseEntity<List<TournamentMatchDTO>> getSportTournamentBrackets(@PathVariable("sport") String sport, HttpServletRequest request) {
+    public ResponseEntity<List<TournamentMatchDTO>> getSportTournamentBrackets(@PathVariable String sport, HttpServletRequest request) {
         List<TournamentMatchDTO> tournamentData = bracketService.getSportTournamentBrackets(sport);
 
         // 사용자 로깅 추가: 토너먼트 브래킷 데이터 조회
