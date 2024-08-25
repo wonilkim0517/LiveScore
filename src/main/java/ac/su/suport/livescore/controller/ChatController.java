@@ -1,6 +1,8 @@
 package ac.su.suport.livescore.controller;
 
 import ac.su.suport.livescore.dto.ChatMessage;
+import ac.su.suport.livescore.logger.UserLogger;  // UserLogger 추가
+import ac.su.suport.livescore.logger.AdminLogger;  // AdminLogger 추가
 import ac.su.suport.livescore.repository.ChatRoomRepository;
 import ac.su.suport.livescore.service.ChatService;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +29,10 @@ public class ChatController {
         if (nickname == null || nickname.trim().isEmpty()) {
             nickname = "Anonymous";
         }
+        
+        // 사용자 로깅 추가: 메시지 수신
+        UserLogger.logRequest("i", "메시지 수신", "/chat/message/" + matchId, "MESSAGE", "user", "Received message from user: " + nickname, headerAccessor.getSessionAttributes());
+
         logger.debug("Received message from user: {}", nickname);
 
         message.setSender(nickname);
@@ -37,6 +43,9 @@ public class ChatController {
         int userCount = (int) chatRoomRepository.getUserCount(matchId);
         logger.debug("Current user count in room {}: {}", matchId, userCount);
         message.setUserCount(userCount);
+
+        // 사용자 로깅 추가: 메시지 전송
+        UserLogger.logRequest("i", "메시지 전송", "/chat/message/" + matchId, "MESSAGE", "user", "Message sent to room " + matchId + " by user: " + nickname, headerAccessor.getSessionAttributes());
 
         // Websocket 에 발행된 메시지를 redis 로 발행 (publish)
         chatService.sendChatMessage(message);
