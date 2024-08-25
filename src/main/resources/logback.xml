@@ -25,7 +25,7 @@
         <file>logs/admin-log.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
             <fileNamePattern>logs/admin-log.%d{yyyy-MM-dd}.log</fileNamePattern>
-            <maxHistory>30</maxHistory>
+            <maxHistory>3</maxHistory>
             <totalSizeCap>1GB</totalSizeCap>
         </rollingPolicy>
         <encoder>
@@ -37,7 +37,7 @@
         <file>logs/user-log.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
             <fileNamePattern>logs/user-log.%d{yyyy-MM-dd}.log</fileNamePattern>
-            <maxHistory>30</maxHistory>
+            <maxHistory>3</maxHistory>
             <totalSizeCap>1GB</totalSizeCap>
         </rollingPolicy>
         <encoder>
