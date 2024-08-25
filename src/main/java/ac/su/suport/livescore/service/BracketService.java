@@ -26,13 +26,8 @@ public class BracketService {
     private final MatchRepository matchRepository;
     private final TeamRepository teamRepository;
     private final MatchTeamRepository matchTeamRepository;
-
-    public List<MatchSummaryDTO.Response> getAllMatches() {
-        List<Match> matches = matchRepository.findAll();
-        return matches.stream()
-                .map(this::convertToMatchSummaryDTO)
-                .collect(Collectors.toList());
-    }private int getMatchesCountForRound(TournamentRound round) {
+    private final MatchService matchService;
+    private int getMatchesCountForRound(TournamentRound round) {
         switch (round) {
             case QUARTER_FINALS:
                 return 4;
@@ -537,96 +532,6 @@ public class BracketService {
         return null;  // 또는 다른 규칙을 적용할 수 있음 (예: 첫 번째 팀 승리)
     }
 
-    @Transactional
-    public List<TournamentMatchDTO> initializeTournament(String sport, TournamentRound startingRound) {
-        List<TournamentRound> tournamentRounds = Arrays.asList(TournamentRound.values());
-        int startIndex = tournamentRounds.indexOf(startingRound);
-        if (startIndex == -1) {
-            throw new IllegalArgumentException("Invalid starting round: " + startingRound);
-        }
-        List<TournamentRound> rounds = tournamentRounds.subList(startIndex, tournamentRounds.size());
 
-        List<Match> tournamentMatches = new ArrayList<>();
 
-        for (TournamentRound round : rounds) {
-            int matchesInRound = getMatchesCountForRound(round);
-            for (int i = 0; i < matchesInRound; i++) {
-                Match match = new Match();
-                match.setSport(sport);
-                match.setMatchType(MatchType.TOURNAMENT);
-                match.setRound(round.getDisplayName());
-                match.setStatus(MatchStatus.FUTURE);
-                match.setDate(LocalDate.now().plusDays(i));
-                match.setStartTime(LocalTime.of(18, 0));
-
-                // 초기 MatchTeam 생성 및 점수 설정
-                MatchTeam team1 = new MatchTeam();
-                team1.setMatch(match);
-                team1.setScore(0);
-
-                MatchTeam team2 = new MatchTeam();
-                team2.setMatch(match);
-                team2.setScore(0);
-
-                match.setMatchTeams(Arrays.asList(team1, team2));
-
-                tournamentMatches.add(match);
-            }
-        }
-
-        List<Match> savedMatches = matchRepository.saveAll(tournamentMatches);
-        List<TournamentMatchDTO> dtos = savedMatches.stream()
-                .map(this::convertToTournamentMatchDTO)
-                .collect(Collectors.toList());
-
-        updateNextMatchIds(dtos);
-        return dtos;
-    }
-
-    private MatchSummaryDTO.Response convertToMatchSummaryDTO(Match match) {
-        MatchSummaryDTO.Response dto = new MatchSummaryDTO.Response();
-        dto.setMatchId(match.getMatchId());
-        dto.setSport(match.getSport());
-        dto.setDate(match.getDate());
-        dto.setStartTime(match.getStartTime());
-        dto.setStatus(match.getStatus().toString());
-        dto.setGroupName(match.getGroupName());
-        dto.setRound(match.getRound());
-        dto.setMatchType(match.getMatchType());
-
-        List<MatchTeam> matchTeams = match.getMatchTeams();
-        if (matchTeams.size() >= 2) {
-            MatchTeam team1 = matchTeams.get(0);
-            MatchTeam team2 = matchTeams.get(1);
-
-            dto.setTeamName1(team1.getTeam().getDepartment().getKoreanName());
-            dto.setTeamName2(team2.getTeam().getDepartment().getKoreanName());
-            dto.setDepartment1(team1.getTeam().getDepartment().name());
-            dto.setDepartment2(team2.getTeam().getDepartment().name());
-            dto.setTeamScore1(team1.getScore());
-            dto.setTeamScore2(team2.getScore());
-            dto.setTeamOneSubScores(team1.getSubScores());  // 추가
-            dto.setTeamTwoSubScores(team2.getSubScores());  // 추가
-
-            dto.setResult(determineMatchResult(team1.getScore(), team2.getScore(), match.getStatus()));
-        }
-
-        return dto;
-    }
-
-    private MatchResult determineMatchResult(int score1, int score2, MatchStatus status) {
-        if (status == MatchStatus.FUTURE) {
-            return MatchResult.NOT_PLAYED;
-        } else if (status == MatchStatus.LIVE) {
-            return MatchResult.IN_PROGRESS;
-        } else {
-            if (score1 > score2) {
-                return MatchResult.TEAM_ONE_WIN;
-            } else if (score1 < score2) {
-                return MatchResult.TEAM_TWO_WIN;
-            } else {
-                return MatchResult.DRAW;
-            }
-        }
-    }
 }

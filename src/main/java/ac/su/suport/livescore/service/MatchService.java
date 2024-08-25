@@ -12,6 +12,7 @@ import ac.su.suport.livescore.repository.MatchTeamRepository;
 import ac.su.suport.livescore.repository.TeamRepository;
 import ac.su.suport.livescore.repository.VideoRepository;
 import jakarta.transaction.Transactional;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -21,25 +22,64 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @Service
+@RequiredArgsConstructor
 public class MatchService {
-
     private final MatchRepository matchRepository;
     private final MatchTeamRepository matchTeamRepository;
     private final TeamRepository teamRepository;
     private final VideoRepository videoRepository;
 
-    @Autowired
-    public MatchService(MatchRepository matchRepository, MatchTeamRepository matchTeamRepository, TeamRepository teamRepository, VideoRepository videoRepository) {
-        this.matchRepository = matchRepository;
-        this.matchTeamRepository = matchTeamRepository;
-        this.teamRepository = teamRepository;
-        this.videoRepository = videoRepository;
-    }
-
     public List<MatchSummaryDTO.Response> getAllMatches() {
         return matchRepository.findAllByOrderByDateDesc().stream()
-                .map(this::convertToMatchSummaryResponse)
+                .map(this::convertToMatchSummaryDTO)  // 여기서 DTO 메서드를 호출
                 .collect(Collectors.toList());
+    }
+
+    private MatchSummaryDTO.Response convertToMatchSummaryDTO(Match match) {
+        MatchSummaryDTO.Response dto = new MatchSummaryDTO.Response();
+        dto.setMatchId(match.getMatchId());
+        dto.setSport(match.getSport());
+        dto.setDate(match.getDate());
+        dto.setStartTime(match.getStartTime());
+        dto.setStatus(match.getStatus().toString());
+        dto.setGroupName(match.getGroupName());
+        dto.setRound(match.getRound());
+        dto.setMatchType(match.getMatchType());
+
+        List<MatchTeam> matchTeams = match.getMatchTeams();
+        if (matchTeams.size() >= 2) {
+            MatchTeam team1 = matchTeams.get(0);
+            MatchTeam team2 = matchTeams.get(1);
+
+            dto.setTeamName1(team1.getTeam().getDepartment().getKoreanName());
+            dto.setTeamName2(team2.getTeam().getDepartment().getKoreanName());
+            dto.setDepartment1(team1.getTeam().getDepartment().name());
+            dto.setDepartment2(team2.getTeam().getDepartment().name());
+            dto.setTeamScore1(team1.getScore());
+            dto.setTeamScore2(team2.getScore());
+            dto.setTeamOneSubScores(team1.getSubScores());  // 추가
+            dto.setTeamTwoSubScores(team2.getSubScores());  // 추가
+
+            dto.setResult(determineMatchResult(team1.getScore(), team2.getScore(), match.getStatus()));
+        }
+
+        return dto;
+    }
+
+    private MatchResult determineMatchResult(int score1, int score2, MatchStatus status) {
+        if (status == MatchStatus.FUTURE) {
+            return MatchResult.NOT_PLAYED;
+        } else if (status == MatchStatus.LIVE) {
+            return MatchResult.IN_PROGRESS;
+        } else {
+            if (score1 > score2) {
+                return MatchResult.TEAM_ONE_WIN;
+            } else if (score1 < score2) {
+                return MatchResult.TEAM_TWO_WIN;
+            } else {
+                return MatchResult.DRAW;
+            }
+        }
     }
 
     public List<MatchSummaryDTO.Response> getFilteredMatches(String sport, LocalDate date, String department) {
