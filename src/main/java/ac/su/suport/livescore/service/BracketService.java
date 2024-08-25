@@ -1,6 +1,9 @@
 package ac.su.suport.livescore.service;
 
-import ac.su.suport.livescore.constant.*;
+import ac.su.suport.livescore.constant.DepartmentEnum;
+import ac.su.suport.livescore.constant.MatchStatus;
+import ac.su.suport.livescore.constant.MatchType;
+import ac.su.suport.livescore.constant.TournamentRound;
 import ac.su.suport.livescore.domain.Match;
 import ac.su.suport.livescore.domain.MatchTeam;
 import ac.su.suport.livescore.domain.Team;
@@ -11,8 +14,17 @@ import ac.su.suport.livescore.repository.TeamRepository;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.kafka.common.errors.ResourceNotFoundException;
+import org.apache.kafka.shaded.com.google.protobuf.ServiceException;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Recover;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.*;
@@ -21,23 +33,70 @@ import java.util.stream.Collectors;
 @Service
 @Transactional
 @RequiredArgsConstructor
+@Slf4j
 public class BracketService {
 
     private final MatchRepository matchRepository;
     private final TeamRepository teamRepository;
     private final MatchTeamRepository matchTeamRepository;
-    private final MatchService matchService;
-    private int getMatchesCountForRound(TournamentRound round) {
-        switch (round) {
-            case QUARTER_FINALS:
-                return 4;
-            case SEMI_FINALS:
-                return 2;
-            case FINAL:
-                return 1;
-            default:
-                throw new IllegalArgumentException("Unknown round: " + round);
+    private final RedisTemplate<String, String> redisTemplate;
+
+    @Transactional
+    @Retryable(
+            value = { OptimisticLockingFailureException.class },
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 1000)
+    )
+    public void deleteTournamentBracket(Long id) {
+        String lockKey = "lock:tournament:" + id;
+        boolean locked = Boolean.TRUE.equals(redisTemplate.opsForValue().setIfAbsent(lockKey, "locked", Duration.ofSeconds(30)));
+
+        if (!locked) {
+            throw new ConcurrentModificationException("Tournament match is being modified by another operation");
         }
+
+        try {
+            Match match = matchRepository.findById(id)
+                    .orElseThrow(() -> new ResourceNotFoundException("Tournament match not found with id: " + id));
+
+            List<Match> relatedMatches = findRelatedMatches(match);
+
+            // Delete in reverse order (from child to parent)
+            for (int i = relatedMatches.size() - 1; i >= 0; i--) {
+                Match relatedMatch = relatedMatches.get(i);
+                deleteMatch(relatedMatch);
+            }
+
+            log.info("Successfully deleted tournament match and related matches for id: {}", id);
+        } finally {
+            redisTemplate.delete(lockKey);
+        }
+    }
+
+    private List<Match> findRelatedMatches(Match match) {
+        List<Match> relatedMatches = new ArrayList<>();
+        relatedMatches.add(match);
+
+        while (match.getPreviousMatchId() != null) {
+            match = matchRepository.findById(match.getPreviousMatchId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Related match not found"));
+            relatedMatches.add(match);
+        }
+
+        return relatedMatches;
+    }
+
+    private void deleteMatch(Match match) {
+        matchTeamRepository.deleteAll(match.getMatchTeams());
+        matchRepository.delete(match);
+        log.debug("Deleted match: {}", match.getMatchId());
+    }
+
+
+    @Recover
+    public void recoverDeleteBracket(OptimisticLockingFailureException e, Long id) throws ServiceException {
+        log.error("Failed to delete bracket after 3 attempts: {}", id, e);
+        throw new ServiceException("Failed to delete bracket due to concurrent modifications", e);
     }
 
     public Map<String, List<GroupDTO>> getSportLeagueBrackets(String sport) {
@@ -145,10 +204,33 @@ public class BracketService {
     }
 
     @Transactional
+    @Retryable(
+            value = { OptimisticLockingFailureException.class },
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 1000)
+    )
     public void deleteLeagueBracket(Long id) {
-        Match match = matchRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Match not found with id: " + id));
-        matchRepository.delete(match);
+        String lockKey = "lock:league:" + id;
+        boolean locked = Boolean.TRUE.equals(redisTemplate.opsForValue().setIfAbsent(lockKey, "locked", Duration.ofSeconds(30)));
+
+        if (!locked) {
+            throw new ConcurrentModificationException("League match is being modified by another operation");
+        }
+
+        try {
+            Match match = matchRepository.findById(id)
+                    .orElseThrow(() -> new ResourceNotFoundException("League match not found with id: " + id));
+
+            // Delete associated MatchTeams
+            matchTeamRepository.deleteAll(match.getMatchTeams());
+
+            // Delete the match
+            matchRepository.delete(match);
+
+            log.info("Successfully deleted league match with id: {}", id);
+        } finally {
+            redisTemplate.delete(lockKey);
+        }
     }
 
     @Transactional
@@ -185,12 +267,7 @@ public class BracketService {
     }
 
 
-    @Transactional
-    public void deleteTournamentBracket(Long id) {
-        Match match = matchRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Match not found with id: " + id));
-        matchRepository.delete(match);
-    }
+
 
     private Match convertToMatch(BracketDTO bracketDTO) {
         Match match = new Match();

@@ -47,6 +47,13 @@ public class Match {
     @Column(name = "result")
     private MatchResult result;
 
+    @Version
+    private Long version;
+    //데이터 상태 추적
+
+    @Column(name = "previous_match_id")
+    private Long previousMatchId;
+
     @OneToMany(mappedBy = "match", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<MatchTeam> matchTeams;
 
@@ -61,6 +68,7 @@ public class Match {
 
     @OneToMany(mappedBy = "match", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Video> videos = new ArrayList<>();
+
 
 
 }

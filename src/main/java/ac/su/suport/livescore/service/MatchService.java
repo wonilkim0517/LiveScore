@@ -2,6 +2,7 @@ package ac.su.suport.livescore.service;
 
 import ac.su.suport.livescore.constant.MatchResult;
 import ac.su.suport.livescore.constant.MatchStatus;
+import ac.su.suport.livescore.constant.MatchType;
 import ac.su.suport.livescore.domain.Match;
 import ac.su.suport.livescore.domain.MatchTeam;
 import ac.su.suport.livescore.domain.Team;
@@ -60,25 +61,52 @@ public class MatchService {
             dto.setTeamOneSubScores(team1.getSubScores());  // 추가
             dto.setTeamTwoSubScores(team2.getSubScores());  // 추가
 
-            dto.setResult(determineMatchResult(team1.getScore(), team2.getScore(), match.getStatus()));
+            dto.setResult(determineMatchResult(match));
         }
-
-        return dto;
+            return dto;
     }
 
-    private MatchResult determineMatchResult(int score1, int score2, MatchStatus status) {
-        if (status == MatchStatus.FUTURE) {
+    private MatchResult determineMatchResult(Match match) {
+        if (match.getStatus() == MatchStatus.FUTURE) {
             return MatchResult.NOT_PLAYED;
-        } else if (status == MatchStatus.LIVE) {
+        } else if (match.getStatus() == MatchStatus.LIVE) {
             return MatchResult.IN_PROGRESS;
+        }
+
+        List<MatchTeam> teams = match.getMatchTeams();
+        if (teams.size() != 2) {
+            return MatchResult.NOT_PLAYED; // 또는 다른 적절한 결과
+        }
+
+        MatchTeam team1 = teams.get(0);
+        MatchTeam team2 = teams.get(1);
+
+        int score1 = team1.getScore();
+        int score2 = team2.getScore();
+
+        if (score1 > score2) {
+            return MatchResult.TEAM_ONE_WIN;
+        } else if (score1 < score2) {
+            return MatchResult.TEAM_TWO_WIN;
         } else {
-            if (score1 > score2) {
-                return MatchResult.TEAM_ONE_WIN;
-            } else if (score1 < score2) {
-                return MatchResult.TEAM_TWO_WIN;
-            } else {
-                return MatchResult.DRAW;
+            // 동점인 경우 서브스코어 확인
+            if (match.getMatchType() == MatchType.TOURNAMENT) {
+                String subScore1 = team1.getSubScores();
+                String subScore2 = team2.getSubScores();
+
+                if (subScore1 != null && subScore2 != null && !subScore1.isEmpty() && !subScore2.isEmpty()) {
+                    int subScoreInt1 = Integer.parseInt(subScore1);
+                    int subScoreInt2 = Integer.parseInt(subScore2);
+
+                    if (subScoreInt1 > subScoreInt2) {
+                        return MatchResult.TEAM_ONE_WIN;
+                    } else if (subScoreInt1 < subScoreInt2) {
+                        return MatchResult.TEAM_TWO_WIN;
+                    }
+                }
             }
+            // 리그 경기이거나 서브스코어도 동점인 경우
+            return MatchResult.DRAW;
         }
     }
 
