@@ -5,6 +5,7 @@ import ac.su.suport.livescore.logger.UserLogger;  // UserLogger 추가
 import ac.su.suport.livescore.logger.AdminLogger;  // AdminLogger 추가
 import ac.su.suport.livescore.repository.ChatRoomRepository;
 import ac.su.suport.livescore.service.ChatService;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,7 +24,7 @@ public class ChatController {
     private final ChatService chatService;
 
     @MessageMapping("/chat/message/{matchId}")
-    public void message(@DestinationVariable String matchId, ChatMessage message, SimpMessageHeaderAccessor headerAccessor) {
+    public void message(@DestinationVariable String matchId, ChatMessage message, SimpMessageHeaderAccessor headerAccessor, HttpServletRequest request) {
         String sessionId = headerAccessor.getSessionId();
         String nickname = (String) headerAccessor.getSessionAttributes().get("nickname");
         if (nickname == null || nickname.trim().isEmpty()) {
@@ -31,7 +32,7 @@ public class ChatController {
         }
         
         // 사용자 로깅 추가: 메시지 수신
-        UserLogger.logRequest("i", "메시지 수신", "/chat/message/" + matchId, "MESSAGE", "user", "Received message from user: " + nickname, headerAccessor.getSessionAttributes());
+        UserLogger.logRequest("i", "메시지 수신", "/chat/message/" + matchId, "MESSAGE", "user", "Received message from user: " + nickname, request);
 
         logger.debug("Received message from user: {}", nickname);
 
@@ -45,7 +46,7 @@ public class ChatController {
         message.setUserCount(userCount);
 
         // 사용자 로깅 추가: 메시지 전송
-        UserLogger.logRequest("i", "메시지 전송", "/chat/message/" + matchId, "MESSAGE", "user", "Message sent to room " + matchId + " by user: " + nickname, headerAccessor.getSessionAttributes());
+        UserLogger.logRequest("i", "메시지 전송", "/chat/message/" + matchId, "MESSAGE", "user", "Message sent to room " + matchId + " by user: " + nickname, request);
 
         // Websocket 에 발행된 메시지를 redis 로 발행 (publish)
         chatService.sendChatMessage(message);
