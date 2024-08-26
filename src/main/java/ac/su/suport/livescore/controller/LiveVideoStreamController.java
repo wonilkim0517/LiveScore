@@ -21,7 +21,7 @@ import java.util.List;
 @Slf4j
 @RestController
 @RequiredArgsConstructor
-@CrossOrigin(origins = {"http://localhost:3000", "https://kim11.shop"})
+@CrossOrigin(origins = {"http://localhost:3000", "https://kim11.shop, https://suportscore.site"})
 @RequestMapping("/api/live")
 public class LiveVideoStreamController {
     private final LiveVideoStreamService liveVideoStreamService;
