@@ -152,14 +152,15 @@ public class MatchService {
         return false;
     }
 
-    @Transactional
-    public MatchModificationDTO createMatch(MatchModificationDTO matchModificationDTO) {
-        Match match = convertToEntity(matchModificationDTO);
 
+    @Transactional
+    public MatchModificationDTO createMatch(MatchModificationDTO matchForm) {
+        Match match = convertToEntity(matchForm);
         Match savedMatch = matchRepository.save(match);
-        saveMatchTeam(savedMatch, matchModificationDTO.getTeamId1(), matchModificationDTO.getTeamId2());
+        saveMatchTeam(savedMatch, matchForm.getTeamId1(), matchForm.getTeamId2());
         return convertToModificationDTO(savedMatch);
     }
+
 
     @Transactional
     public MatchModificationDTO updateMatch(Long id, MatchModificationDTO matchModificationDTO) {
