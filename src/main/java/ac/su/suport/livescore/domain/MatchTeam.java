@@ -9,7 +9,9 @@ import lombok.AllArgsConstructor;
 import java.util.List;
 
 @Entity
-@Table(name = "match_team")
+@Table(name = "match_team", uniqueConstraints = {
+        @UniqueConstraint(columnNames = {"match_id", "team_id"})
+})
 @Getter @Setter
 @AllArgsConstructor
 public class MatchTeam {

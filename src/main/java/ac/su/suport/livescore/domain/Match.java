@@ -12,8 +12,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@Table(name = "matches")
 @Getter @Setter
+@Table(name = "matches", uniqueConstraints = {
+        @UniqueConstraint(columnNames = {"sport", "date", "team1_id", "team2_id"})})
 public class Match {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -46,6 +47,9 @@ public class Match {
     @Enumerated(EnumType.STRING)
     @Column(name = "result")
     private MatchResult result;
+
+    @Column(name = "next_match_id")
+    private Long nextMatchId;
 
     @Version
     private Long version;
