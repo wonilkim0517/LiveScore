@@ -5,6 +5,7 @@ import ac.su.suport.livescore.dto.GroupDTO;
 import ac.su.suport.livescore.dto.TournamentMatchDTO;
 import ac.su.suport.livescore.service.BracketService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -14,6 +15,7 @@ import java.util.Map;
 
 @RestController
 @RequiredArgsConstructor
+@Slf4j
 @RequestMapping("api/brackets")
 public class BracketController {
 
@@ -27,7 +29,9 @@ public class BracketController {
 
     @GetMapping("/tournament/{sport}")
     public ResponseEntity<List<TournamentMatchDTO>> getSportTournamentBrackets(@PathVariable String sport) {
+        log.info("Fetching tournament brackets for sport: {}", sport);
         List<TournamentMatchDTO> tournamentData = bracketService.getSportTournamentBrackets(sport);
+        log.info("Returned {} tournament matches for sport: {}", tournamentData.size(), sport);
         return new ResponseEntity<>(tournamentData, HttpStatus.OK);
     }
 

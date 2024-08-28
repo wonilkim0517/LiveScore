@@ -31,8 +31,8 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
-@Transactional
 @RequiredArgsConstructor
+@Transactional
 @Slf4j
 public class BracketService {
 
@@ -254,6 +254,7 @@ public class BracketService {
         return convertToBracketDTO(match);
     }
 
+    @Transactional
     public BracketDTO updateTournamentBracket(Long id, BracketDTO bracketDTO) {
         Match match = matchRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Match not found with id: " + id));
@@ -262,6 +263,9 @@ public class BracketService {
         updateMatchTeams(match, bracketDTO);
         if (match.getStatus() == MatchStatus.PAST) {
             updateStandings(match);
+            List<TournamentMatchDTO> updatedBrackets = getSportTournamentBrackets(match.getSport());
+            createNextRoundMatchesIfNeeded(updatedBrackets, match.getSport());
+            updateNextMatchIds(updatedBrackets);
         }
         return convertToBracketDTO(match);
     }
@@ -454,11 +458,26 @@ public class BracketService {
                         if (j + 1 < currentMatches.size()) {
                             currentMatches.get(j + 1).setNextMatchId(nextMatchId);
                         }
+                        updateNextMatchId(currentMatches.get(j).getId(), nextMatchId);
+                        if (j + 1 < currentMatches.size()) {
+                            updateNextMatchId(currentMatches.get(j + 1).getId(), nextMatchId);
+                        }
                     }
                 }
             }
         }
     }
+
+    private void updateNextMatchId(Long currentMatchId, Long nextMatchId) {
+        log.info("Updating nextMatchId for match {} to {}", currentMatchId, nextMatchId);
+        Match currentMatch = matchRepository.findById(currentMatchId)
+                .orElseThrow(() -> new RuntimeException("Match not found with id: " + currentMatchId));
+        currentMatch.setNextMatchId(nextMatchId);
+        Match updatedMatch = matchRepository.save(currentMatch);
+        log.info("Updated match in database: {}", updatedMatch);
+
+    }
+
 
 
     public List<TournamentMatchDTO> getSportTournamentBrackets(String sport) {
@@ -467,8 +486,11 @@ public class BracketService {
                 .map(this::convertToTournamentMatchDTO)
                 .collect(Collectors.toList());
 
-        updateNextMatchIds(dtos);
+        log.info("Initial tournament brackets for sport {}: {}", sport, dtos);
         createNextRoundMatchesIfNeeded(dtos, sport);
+        log.info("Tournament brackets after creating next round for sport {}: {}", sport, dtos);
+        updateNextMatchIds(dtos);
+        log.info("Final tournament brackets for sport {}: {}", sport, dtos);
         return dtos;
     }
 
@@ -487,15 +509,32 @@ public class BracketService {
             if (currentMatches != null && (nextMatches == null || nextMatches.isEmpty())) {
                 boolean allMatchesFinished = currentMatches.stream()
                         .allMatch(match -> "PAST".equals(match.getState()));
+                int expectedMatches = getCurrentRoundExpectedMatches(currentRound);
 
-                if (allMatchesFinished) {
-                    createNextRoundMatches(currentMatches, nextRound, sport);
+                log.info("Current round: {}, Finished matches: {}, Expected matches: {}",
+                        currentRound, currentMatches.size(), expectedMatches);
+
+                if (allMatchesFinished && currentMatches.size() == expectedMatches) {
+                    log.info("Creating next round matches for round: {} in sport: {}", nextRound, sport);
+                    List<TournamentMatchDTO> newMatches = createNextRoundMatches(currentMatches, nextRound, sport);
+                    matches.addAll(newMatches);
+                    roundMatches.put(nextRound.name(), newMatches);
                 }
             }
         }
     }
 
-    private void createNextRoundMatches(List<TournamentMatchDTO> currentMatches, TournamentRound nextRound, String sport) {
+    private int getCurrentRoundExpectedMatches(TournamentRound round) {
+        switch (round) {
+            case QUARTER_FINALS: return 4;
+            case SEMI_FINALS: return 2;
+            case FINAL: return 1;
+            default: throw new IllegalArgumentException("Unknown round: " + round);
+        }
+    }
+
+    private List<TournamentMatchDTO> createNextRoundMatches(List<TournamentMatchDTO> currentMatches, TournamentRound nextRound, String sport) {
+        List<TournamentMatchDTO> newMatches = new ArrayList<>();
         for (int i = 0; i < currentMatches.size(); i += 2) {
             TournamentMatchDTO match1 = currentMatches.get(i);
             TournamentMatchDTO match2 = i + 1 < currentMatches.size() ? currentMatches.get(i + 1) : null;
@@ -511,13 +550,24 @@ public class BracketService {
                 newMatch.setStatus(MatchStatus.FUTURE);
                 newMatch.setDate(LocalDate.now().plusDays(7));
                 newMatch.setStartTime(LocalTime.of(18, 0));
+                newMatch.setPreviousMatchId(match1.getId());  // 이전 매치 ID 설정
 
                 newMatch = matchRepository.save(newMatch);
+                log.info("Created new match: {}", newMatch);
+
+                // 이전 매치들의 nextMatchId 업데이트
+                updateNextMatchId(match1.getId(), newMatch.getMatchId());
+                if (match2 != null) {
+                    updateNextMatchId(match2.getId(), newMatch.getMatchId());
+                }
 
                 createMatchTeam(newMatch, winner1, true);
                 createMatchTeam(newMatch, winner2, true);
+                TournamentMatchDTO newMatchDTO = convertToTournamentMatchDTO(newMatch);
+                newMatches.add(newMatchDTO);
             }
         }
+        return currentMatches;
     }
 
     private ParticipantDTO getWinner(TournamentMatchDTO match) {
@@ -543,17 +593,22 @@ public class BracketService {
         TournamentMatchDTO dto = new TournamentMatchDTO();
         dto.setId(match.getMatchId());
         dto.setName(match.getRound() + " - Match " + match.getMatchId());
+        dto.setNextMatchId(match.getNextMatchId());
         dto.setTournamentRoundText(match.getRound());
         dto.setStartTime(match.getDate().atTime(match.getStartTime()).toString());
         dto.setState(match.getStatus().toString());
 
-        List<ParticipantDTO> participants = match.getMatchTeams().stream()
+        // match.getMatchTeams()가 null인지 체크하고, null일 경우 빈 리스트로 처리
+        List<ParticipantDTO> participants = Optional.ofNullable(match.getMatchTeams())
+                .orElse(Collections.emptyList())  // null인 경우 빈 리스트 사용
+                .stream()
                 .map(this::convertToParticipantDTO)
                 .collect(Collectors.toList());
         dto.setParticipants(participants);
 
         return dto;
     }
+
 
     private ParticipantDTO convertToParticipantDTO(MatchTeam matchTeam) {
         ParticipantDTO dto = new ParticipantDTO();

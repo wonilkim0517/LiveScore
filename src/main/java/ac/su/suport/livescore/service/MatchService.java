@@ -110,23 +110,21 @@ public class MatchService {
         }
     }
 
-    public List<MatchSummaryDTO.Response> getFilteredMatches(String sport, LocalDate date, String department) {
+    public List<MatchSummaryDTO.Response> getFilteredMatches(String sport, LocalDate date, String status) {
         List<Match> matches;
 
-        if (sport != null && date != null && department != null) {
-            matches = matchRepository.findBySportAndDateAndDepartmentOrderByDateDesc(sport, date, department);
-        } else if (sport != null && date != null) {
+        if ("LIVE".equals(sport)) {
+            if (date != null) {
+                matches = matchRepository.findByStatusAndDateOrderByDateDesc(MatchStatus.LIVE, date);
+            } else {
+                matches = matchRepository.findByStatusOrderByDateDesc(MatchStatus.LIVE);
+            }
+        } else if ((sport != null && !sport.equals("ALL")) && date != null) {
             matches = matchRepository.findBySportAndDateOrderByDateDesc(sport, date);
-        } else if (sport != null && department != null) {
-            matches = matchRepository.findBySportAndDepartmentOrderByDateDesc(sport, department);
-        } else if (date != null && department != null) {
-            matches = matchRepository.findByDateAndDepartmentOrderByDateDesc(date, department);
-        } else if (sport != null) {
+        } else if (sport != null && !sport.equals("ALL")) {
             matches = matchRepository.findBySportOrderByDateDesc(sport);
         } else if (date != null) {
             matches = matchRepository.findByDateOrderByDateDesc(date);
-        } else if (department != null) {
-            matches = matchRepository.findByDepartmentOrderByDateDesc(department);
         } else {
             matches = matchRepository.findAllByOrderByDateDesc();
         }
@@ -136,7 +134,6 @@ public class MatchService {
                 .map(this::convertToMatchSummaryResponse)
                 .collect(Collectors.toList());
     }
-
     public MatchSummaryDTO.Response getMatchById(Long id) {
         return matchRepository.findById(id)
                 .map(this::convertToMatchSummaryResponse)
