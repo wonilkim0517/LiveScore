@@ -91,25 +91,27 @@ public class UserController {
     public ResponseEntity<Map<String, String>> login(@RequestBody LoginRequest loginRequest, HttpServletRequest request) {
         User user = userService.authenticate(loginRequest.getEmail(), loginRequest.getPassword());
         if (user == null) {
-            // 사용자 로깅 추가: 로그인 실패
+            // 로그인 실패 시 로그 기록
             UserLogger.logRequest("e", "로그인 실패", "/api/users/login", "POST", "user", "Failed login attempt with email: " + loginRequest.getEmail(), request);
 
+            // 로그인 실패 시 응답
             return ResponseEntity.badRequest().body(Map.of("error", "유효하지 않은 이메일 혹은 비밀번호입니다."));
         }
 
-        // 여기서 user.getNickname()을 로그에 찍어 확인
-        System.out.println("User nickname: " + user.getNickname());
-
+        // 로그인 성공 시 세션 설정
         session.setAttribute("currentUser", user);
 
+        // 응답 객체에 userId, role, nickname 추가
         Map<String, String> response = new HashMap<>();
         response.put("message", "로그인 성공");
+        response.put("userId", String.valueOf(user.getUserId())); // userId 추가
         response.put("role", user.getRole().name());
-        response.put("nickname", user.getNickname());  // 닉네임 추가
+        response.put("nickname", user.getNickname());
 
-        // 사용자 로깅 추가: 로그인 성공
+        // 로그인 성공 시 로그 기록
         UserLogger.logRequest("i", "로그인 성공", "/api/users/login", "POST", "user", "User: " + user.getUsername() + " logged in", request);
 
+        // 성공 응답 반환
         return ResponseEntity.ok(response);
     }
 
