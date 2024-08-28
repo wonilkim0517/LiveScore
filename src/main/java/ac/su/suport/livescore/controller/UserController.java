@@ -107,6 +107,7 @@ public class UserController {
         response.put("userId", String.valueOf(user.getUserId())); // userId 추가
         response.put("role", user.getRole().name());
         response.put("nickname", user.getNickname());
+        response.put("email", user.getEmail());
 
         // 로그인 성공 시 로그 기록
         UserLogger.logRequest("i", "로그인 성공", "/api/users/login", "POST", "user", "User: " + user.getUsername() + " logged in", request);
