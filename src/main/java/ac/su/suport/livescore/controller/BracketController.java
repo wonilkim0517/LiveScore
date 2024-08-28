@@ -7,6 +7,7 @@ import ac.su.suport.livescore.logger.AdminLogger;
 import ac.su.suport.livescore.logger.UserLogger;  // UserLogger 추가
 import ac.su.suport.livescore.service.BracketService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -17,6 +18,7 @@ import java.util.Map;
 
 @RestController
 @RequiredArgsConstructor
+@Slf4j
 @RequestMapping("api/brackets")
 public class BracketController {
 
@@ -35,12 +37,11 @@ public class BracketController {
 
     // 특정 스포츠의 토너먼트 브래킷 데이터를 조회합니다.
     @GetMapping("/tournament/{sport}")
-    public ResponseEntity<List<TournamentMatchDTO>> getSportTournamentBrackets(@PathVariable String sport, HttpServletRequest request) {
+  
+    public ResponseEntity<List<TournamentMatchDTO>> getSportTournamentBrackets(@PathVariable String sport) {
+        log.info("Fetching tournament brackets for sport: {}", sport);
         List<TournamentMatchDTO> tournamentData = bracketService.getSportTournamentBrackets(sport);
-
-        // 사용자 로깅 추가: 토너먼트 브래킷 데이터 조회
-        UserLogger.logRequest("i", "토너먼트 브래킷 조회", "/api/brackets/tournament/" + sport, "GET", "user", "Sport: " + sport, request);
-
+        log.info("Returned {} tournament matches for sport: {}", tournamentData.size(), sport);
         return new ResponseEntity<>(tournamentData, HttpStatus.OK);
     }
 

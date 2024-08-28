@@ -1,5 +1,6 @@
 package ac.su.suport.livescore.repository;
 
+import ac.su.suport.livescore.constant.MatchStatus;
 import ac.su.suport.livescore.constant.MatchType;
 import ac.su.suport.livescore.domain.Match;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -16,6 +17,9 @@ public interface MatchRepository extends JpaRepository<Match, Long> {
     List<Match> findBySportAndMatchType(String sport, MatchType matchType);
 
     List<Match> findAllByOrderByDateDesc();
+
+    List<Match> findByStatusAndDateOrderByDateDesc(MatchStatus status, LocalDate date);
+    List<Match> findByStatusOrderByDateDesc(MatchStatus status);
 
     List<Match> findBySportOrderByDateDesc(String sport);
 
@@ -39,4 +43,5 @@ public interface MatchRepository extends JpaRepository<Match, Long> {
 
     @Query("SELECT m FROM Match m WHERE m.sport = :sport AND m.matchType = :matchType ORDER BY m.round DESC")
     List<Match> findBySportAndMatchTypeOrderByRoundDesc(@Param("sport") String sport, @Param("matchType") MatchType matchType);
+
 }

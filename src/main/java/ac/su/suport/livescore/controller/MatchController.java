@@ -14,6 +14,7 @@ import ac.su.suport.livescore.service.LiveVideoStreamService;
 import ac.su.suport.livescore.service.MatchService;
 import ac.su.suport.livescore.service.VideoService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -28,6 +29,7 @@ import java.util.List;
 
 @Controller
 @RequiredArgsConstructor
+@Slf4j
 @RequestMapping("/api/matches")
 public class MatchController {
 
@@ -60,16 +62,13 @@ public class MatchController {
 
     // 필터링
     @GetMapping
-    public ResponseEntity<List<MatchSummaryDTO.Response>> getMatches(
+    public ResponseEntity<List<MatchSummaryDTO.Response>> getFilteredMatches(
             @RequestParam(required = false) String sport,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
-            @RequestParam(required = false) String department,
-            HttpServletRequest request) {
-        List<MatchSummaryDTO.Response> matches = matchService.getFilteredMatches(sport, date, department);
-        
-        // 사용자 로깅 추가: 필터링된 경기 데이터 조회
-        UserLogger.logRequest("i", "필터링된 경기 데이터 조회", "/api/matches", "GET", "user", "Filter: sport=" + sport + ", date=" + date + ", department=" + department, request);
-        
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+
+        log.info("Received request - sport: {}, date: {}", sport, date);
+        List<MatchSummaryDTO.Response> matches = matchService.getFilteredMatches(sport, date, null);
+        log.info("Returning {} matches", matches.size());
         return new ResponseEntity<>(matches, HttpStatus.OK);
     }
 

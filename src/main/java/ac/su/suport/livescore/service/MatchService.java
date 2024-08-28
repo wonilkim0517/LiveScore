@@ -2,6 +2,7 @@ package ac.su.suport.livescore.service;
 
 import ac.su.suport.livescore.constant.MatchResult;
 import ac.su.suport.livescore.constant.MatchStatus;
+import ac.su.suport.livescore.constant.MatchType;
 import ac.su.suport.livescore.domain.Match;
 import ac.su.suport.livescore.domain.MatchTeam;
 import ac.su.suport.livescore.domain.Team;
@@ -12,6 +13,7 @@ import ac.su.suport.livescore.repository.MatchTeamRepository;
 import ac.su.suport.livescore.repository.TeamRepository;
 import ac.su.suport.livescore.repository.VideoRepository;
 import jakarta.transaction.Transactional;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -21,44 +23,108 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @Service
+@RequiredArgsConstructor
 public class MatchService {
-
     private final MatchRepository matchRepository;
     private final MatchTeamRepository matchTeamRepository;
     private final TeamRepository teamRepository;
     private final VideoRepository videoRepository;
 
-    @Autowired
-    public MatchService(MatchRepository matchRepository, MatchTeamRepository matchTeamRepository, TeamRepository teamRepository, VideoRepository videoRepository) {
-        this.matchRepository = matchRepository;
-        this.matchTeamRepository = matchTeamRepository;
-        this.teamRepository = teamRepository;
-        this.videoRepository = videoRepository;
-    }
-
     public List<MatchSummaryDTO.Response> getAllMatches() {
         return matchRepository.findAllByOrderByDateDesc().stream()
-                .map(this::convertToMatchSummaryResponse)
+                .map(this::convertToMatchSummaryDTO)  // 여기서 DTO 메서드를 호출
                 .collect(Collectors.toList());
     }
 
-    public List<MatchSummaryDTO.Response> getFilteredMatches(String sport, LocalDate date, String department) {
+    private MatchSummaryDTO.Response convertToMatchSummaryDTO(Match match) {
+        MatchSummaryDTO.Response dto = new MatchSummaryDTO.Response();
+        dto.setMatchId(match.getMatchId());
+        dto.setSport(match.getSport());
+        dto.setDate(match.getDate());
+        dto.setStartTime(match.getStartTime());
+        dto.setStatus(match.getStatus().toString());
+        dto.setGroupName(match.getGroupName());
+        dto.setRound(match.getRound());
+        dto.setMatchType(match.getMatchType());
+
+        List<MatchTeam> matchTeams = match.getMatchTeams();
+        if (matchTeams.size() >= 2) {
+            MatchTeam team1 = matchTeams.get(0);
+            MatchTeam team2 = matchTeams.get(1);
+
+            dto.setTeamName1(team1.getTeam().getDepartment().getKoreanName());
+            dto.setTeamName2(team2.getTeam().getDepartment().getKoreanName());
+            dto.setDepartment1(team1.getTeam().getDepartment().name());
+            dto.setDepartment2(team2.getTeam().getDepartment().name());
+            dto.setTeamScore1(team1.getScore());
+            dto.setTeamScore2(team2.getScore());
+            dto.setTeamOneSubScores(team1.getSubScores());  // 추가
+            dto.setTeamTwoSubScores(team2.getSubScores());  // 추가
+
+            dto.setResult(determineMatchResult(match));
+        }
+            return dto;
+    }
+
+    private MatchResult determineMatchResult(Match match) {
+        if (match.getStatus() == MatchStatus.FUTURE) {
+            return MatchResult.NOT_PLAYED;
+        } else if (match.getStatus() == MatchStatus.LIVE) {
+            return MatchResult.IN_PROGRESS;
+        }
+
+        List<MatchTeam> teams = match.getMatchTeams();
+        if (teams.size() != 2) {
+            return MatchResult.NOT_PLAYED; // 또는 다른 적절한 결과
+        }
+
+        MatchTeam team1 = teams.get(0);
+        MatchTeam team2 = teams.get(1);
+
+        int score1 = team1.getScore();
+        int score2 = team2.getScore();
+
+        if (score1 > score2) {
+            return MatchResult.TEAM_ONE_WIN;
+        } else if (score1 < score2) {
+            return MatchResult.TEAM_TWO_WIN;
+        } else {
+            // 동점인 경우 서브스코어 확인
+            if (match.getMatchType() == MatchType.TOURNAMENT) {
+                String subScore1 = team1.getSubScores();
+                String subScore2 = team2.getSubScores();
+
+                if (subScore1 != null && subScore2 != null && !subScore1.isEmpty() && !subScore2.isEmpty()) {
+                    int subScoreInt1 = Integer.parseInt(subScore1);
+                    int subScoreInt2 = Integer.parseInt(subScore2);
+
+                    if (subScoreInt1 > subScoreInt2) {
+                        return MatchResult.TEAM_ONE_WIN;
+                    } else if (subScoreInt1 < subScoreInt2) {
+                        return MatchResult.TEAM_TWO_WIN;
+                    }
+                }
+            }
+            // 리그 경기이거나 서브스코어도 동점인 경우
+            return MatchResult.DRAW;
+        }
+    }
+
+    public List<MatchSummaryDTO.Response> getFilteredMatches(String sport, LocalDate date, String status) {
         List<Match> matches;
 
-        if (sport != null && date != null && department != null) {
-            matches = matchRepository.findBySportAndDateAndDepartmentOrderByDateDesc(sport, date, department);
-        } else if (sport != null && date != null) {
+        if ("LIVE".equals(sport)) {
+            if (date != null) {
+                matches = matchRepository.findByStatusAndDateOrderByDateDesc(MatchStatus.LIVE, date);
+            } else {
+                matches = matchRepository.findByStatusOrderByDateDesc(MatchStatus.LIVE);
+            }
+        } else if ((sport != null && !sport.equals("ALL")) && date != null) {
             matches = matchRepository.findBySportAndDateOrderByDateDesc(sport, date);
-        } else if (sport != null && department != null) {
-            matches = matchRepository.findBySportAndDepartmentOrderByDateDesc(sport, department);
-        } else if (date != null && department != null) {
-            matches = matchRepository.findByDateAndDepartmentOrderByDateDesc(date, department);
-        } else if (sport != null) {
+        } else if (sport != null && !sport.equals("ALL")) {
             matches = matchRepository.findBySportOrderByDateDesc(sport);
         } else if (date != null) {
             matches = matchRepository.findByDateOrderByDateDesc(date);
-        } else if (department != null) {
-            matches = matchRepository.findByDepartmentOrderByDateDesc(department);
         } else {
             matches = matchRepository.findAllByOrderByDateDesc();
         }
@@ -68,7 +134,6 @@ public class MatchService {
                 .map(this::convertToMatchSummaryResponse)
                 .collect(Collectors.toList());
     }
-
     public MatchSummaryDTO.Response getMatchById(Long id) {
         return matchRepository.findById(id)
                 .map(this::convertToMatchSummaryResponse)
@@ -84,14 +149,15 @@ public class MatchService {
         return false;
     }
 
-    @Transactional
-    public MatchModificationDTO createMatch(MatchModificationDTO matchModificationDTO) {
-        Match match = convertToEntity(matchModificationDTO);
 
+    @Transactional
+    public MatchModificationDTO createMatch(MatchModificationDTO matchForm) {
+        Match match = convertToEntity(matchForm);
         Match savedMatch = matchRepository.save(match);
-        saveMatchTeam(savedMatch, matchModificationDTO.getTeamId1(), matchModificationDTO.getTeamId2());
+        saveMatchTeam(savedMatch, matchForm.getTeamId1(), matchForm.getTeamId2());
         return convertToModificationDTO(savedMatch);
     }
+
 
     @Transactional
     public MatchModificationDTO updateMatch(Long id, MatchModificationDTO matchModificationDTO) {

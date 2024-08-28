@@ -13,7 +13,8 @@ import org.hibernate.annotations.DynamicUpdate;
 import java.util.List;
 
 @Entity
-@Table(name = "teams")
+@Table(name = "teams", uniqueConstraints = {
+        @UniqueConstraint(columnNames = {"department"})})
 @Getter @Setter
 @NoArgsConstructor
 @AllArgsConstructor

@@ -1,6 +1,9 @@
 package ac.su.suport.livescore.service;
 
-import ac.su.suport.livescore.constant.*;
+import ac.su.suport.livescore.constant.DepartmentEnum;
+import ac.su.suport.livescore.constant.MatchStatus;
+import ac.su.suport.livescore.constant.MatchType;
+import ac.su.suport.livescore.constant.TournamentRound;
 import ac.su.suport.livescore.domain.Match;
 import ac.su.suport.livescore.domain.MatchTeam;
 import ac.su.suport.livescore.domain.Team;
@@ -11,38 +14,89 @@ import ac.su.suport.livescore.repository.TeamRepository;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.kafka.common.errors.ResourceNotFoundException;
+import org.apache.kafka.shaded.com.google.protobuf.ServiceException;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Recover;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
-@Transactional
 @RequiredArgsConstructor
+@Transactional
+@Slf4j
 public class BracketService {
 
     private final MatchRepository matchRepository;
     private final TeamRepository teamRepository;
     private final MatchTeamRepository matchTeamRepository;
+    private final RedisTemplate<String, String> redisTemplate;
 
-    public List<MatchSummaryDTO.Response> getAllMatches() {
-        List<Match> matches = matchRepository.findAll();
-        return matches.stream()
-                .map(this::convertToMatchSummaryDTO)
-                .collect(Collectors.toList());
-    }private int getMatchesCountForRound(TournamentRound round) {
-        switch (round) {
-            case QUARTER_FINALS:
-                return 4;
-            case SEMI_FINALS:
-                return 2;
-            case FINAL:
-                return 1;
-            default:
-                throw new IllegalArgumentException("Unknown round: " + round);
+    @Transactional
+    @Retryable(
+            value = { OptimisticLockingFailureException.class },
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 1000)
+    )
+    public void deleteTournamentBracket(Long id) {
+        String lockKey = "lock:tournament:" + id;
+        boolean locked = Boolean.TRUE.equals(redisTemplate.opsForValue().setIfAbsent(lockKey, "locked", Duration.ofSeconds(30)));
+
+        if (!locked) {
+            throw new ConcurrentModificationException("Tournament match is being modified by another operation");
         }
+
+        try {
+            Match match = matchRepository.findById(id)
+                    .orElseThrow(() -> new ResourceNotFoundException("Tournament match not found with id: " + id));
+
+            List<Match> relatedMatches = findRelatedMatches(match);
+
+            // Delete in reverse order (from child to parent)
+            for (int i = relatedMatches.size() - 1; i >= 0; i--) {
+                Match relatedMatch = relatedMatches.get(i);
+                deleteMatch(relatedMatch);
+            }
+
+            log.info("Successfully deleted tournament match and related matches for id: {}", id);
+        } finally {
+            redisTemplate.delete(lockKey);
+        }
+    }
+
+    private List<Match> findRelatedMatches(Match match) {
+        List<Match> relatedMatches = new ArrayList<>();
+        relatedMatches.add(match);
+
+        while (match.getPreviousMatchId() != null) {
+            match = matchRepository.findById(match.getPreviousMatchId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Related match not found"));
+            relatedMatches.add(match);
+        }
+
+        return relatedMatches;
+    }
+
+    private void deleteMatch(Match match) {
+        matchTeamRepository.deleteAll(match.getMatchTeams());
+        matchRepository.delete(match);
+        log.debug("Deleted match: {}", match.getMatchId());
+    }
+
+
+    @Recover
+    public void recoverDeleteBracket(OptimisticLockingFailureException e, Long id) throws ServiceException {
+        log.error("Failed to delete bracket after 3 attempts: {}", id, e);
+        throw new ServiceException("Failed to delete bracket due to concurrent modifications", e);
     }
 
     public Map<String, List<GroupDTO>> getSportLeagueBrackets(String sport) {
@@ -150,10 +204,33 @@ public class BracketService {
     }
 
     @Transactional
+    @Retryable(
+            value = { OptimisticLockingFailureException.class },
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 1000)
+    )
     public void deleteLeagueBracket(Long id) {
-        Match match = matchRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Match not found with id: " + id));
-        matchRepository.delete(match);
+        String lockKey = "lock:league:" + id;
+        boolean locked = Boolean.TRUE.equals(redisTemplate.opsForValue().setIfAbsent(lockKey, "locked", Duration.ofSeconds(30)));
+
+        if (!locked) {
+            throw new ConcurrentModificationException("League match is being modified by another operation");
+        }
+
+        try {
+            Match match = matchRepository.findById(id)
+                    .orElseThrow(() -> new ResourceNotFoundException("League match not found with id: " + id));
+
+            // Delete associated MatchTeams
+            matchTeamRepository.deleteAll(match.getMatchTeams());
+
+            // Delete the match
+            matchRepository.delete(match);
+
+            log.info("Successfully deleted league match with id: {}", id);
+        } finally {
+            redisTemplate.delete(lockKey);
+        }
     }
 
     @Transactional
@@ -177,6 +254,7 @@ public class BracketService {
         return convertToBracketDTO(match);
     }
 
+    @Transactional
     public BracketDTO updateTournamentBracket(Long id, BracketDTO bracketDTO) {
         Match match = matchRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Match not found with id: " + id));
@@ -185,17 +263,15 @@ public class BracketService {
         updateMatchTeams(match, bracketDTO);
         if (match.getStatus() == MatchStatus.PAST) {
             updateStandings(match);
+            List<TournamentMatchDTO> updatedBrackets = getSportTournamentBrackets(match.getSport());
+            createNextRoundMatchesIfNeeded(updatedBrackets, match.getSport());
+            updateNextMatchIds(updatedBrackets);
         }
         return convertToBracketDTO(match);
     }
 
 
-    @Transactional
-    public void deleteTournamentBracket(Long id) {
-        Match match = matchRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Match not found with id: " + id));
-        matchRepository.delete(match);
-    }
+
 
     private Match convertToMatch(BracketDTO bracketDTO) {
         Match match = new Match();
@@ -382,11 +458,26 @@ public class BracketService {
                         if (j + 1 < currentMatches.size()) {
                             currentMatches.get(j + 1).setNextMatchId(nextMatchId);
                         }
+                        updateNextMatchId(currentMatches.get(j).getId(), nextMatchId);
+                        if (j + 1 < currentMatches.size()) {
+                            updateNextMatchId(currentMatches.get(j + 1).getId(), nextMatchId);
+                        }
                     }
                 }
             }
         }
     }
+
+    private void updateNextMatchId(Long currentMatchId, Long nextMatchId) {
+        log.info("Updating nextMatchId for match {} to {}", currentMatchId, nextMatchId);
+        Match currentMatch = matchRepository.findById(currentMatchId)
+                .orElseThrow(() -> new RuntimeException("Match not found with id: " + currentMatchId));
+        currentMatch.setNextMatchId(nextMatchId);
+        Match updatedMatch = matchRepository.save(currentMatch);
+        log.info("Updated match in database: {}", updatedMatch);
+
+    }
+
 
 
     public List<TournamentMatchDTO> getSportTournamentBrackets(String sport) {
@@ -395,8 +486,11 @@ public class BracketService {
                 .map(this::convertToTournamentMatchDTO)
                 .collect(Collectors.toList());
 
-        updateNextMatchIds(dtos);
+        log.info("Initial tournament brackets for sport {}: {}", sport, dtos);
         createNextRoundMatchesIfNeeded(dtos, sport);
+        log.info("Tournament brackets after creating next round for sport {}: {}", sport, dtos);
+        updateNextMatchIds(dtos);
+        log.info("Final tournament brackets for sport {}: {}", sport, dtos);
         return dtos;
     }
 
@@ -415,15 +509,32 @@ public class BracketService {
             if (currentMatches != null && (nextMatches == null || nextMatches.isEmpty())) {
                 boolean allMatchesFinished = currentMatches.stream()
                         .allMatch(match -> "PAST".equals(match.getState()));
+                int expectedMatches = getCurrentRoundExpectedMatches(currentRound);
 
-                if (allMatchesFinished) {
-                    createNextRoundMatches(currentMatches, nextRound, sport);
+                log.info("Current round: {}, Finished matches: {}, Expected matches: {}",
+                        currentRound, currentMatches.size(), expectedMatches);
+
+                if (allMatchesFinished && currentMatches.size() == expectedMatches) {
+                    log.info("Creating next round matches for round: {} in sport: {}", nextRound, sport);
+                    List<TournamentMatchDTO> newMatches = createNextRoundMatches(currentMatches, nextRound, sport);
+                    matches.addAll(newMatches);
+                    roundMatches.put(nextRound.name(), newMatches);
                 }
             }
         }
     }
 
-    private void createNextRoundMatches(List<TournamentMatchDTO> currentMatches, TournamentRound nextRound, String sport) {
+    private int getCurrentRoundExpectedMatches(TournamentRound round) {
+        switch (round) {
+            case QUARTER_FINALS: return 4;
+            case SEMI_FINALS: return 2;
+            case FINAL: return 1;
+            default: throw new IllegalArgumentException("Unknown round: " + round);
+        }
+    }
+
+    private List<TournamentMatchDTO> createNextRoundMatches(List<TournamentMatchDTO> currentMatches, TournamentRound nextRound, String sport) {
+        List<TournamentMatchDTO> newMatches = new ArrayList<>();
         for (int i = 0; i < currentMatches.size(); i += 2) {
             TournamentMatchDTO match1 = currentMatches.get(i);
             TournamentMatchDTO match2 = i + 1 < currentMatches.size() ? currentMatches.get(i + 1) : null;
@@ -439,13 +550,24 @@ public class BracketService {
                 newMatch.setStatus(MatchStatus.FUTURE);
                 newMatch.setDate(LocalDate.now().plusDays(7));
                 newMatch.setStartTime(LocalTime.of(18, 0));
+                newMatch.setPreviousMatchId(match1.getId());  // 이전 매치 ID 설정
 
                 newMatch = matchRepository.save(newMatch);
+                log.info("Created new match: {}", newMatch);
+
+                // 이전 매치들의 nextMatchId 업데이트
+                updateNextMatchId(match1.getId(), newMatch.getMatchId());
+                if (match2 != null) {
+                    updateNextMatchId(match2.getId(), newMatch.getMatchId());
+                }
 
                 createMatchTeam(newMatch, winner1, true);
                 createMatchTeam(newMatch, winner2, true);
+                TournamentMatchDTO newMatchDTO = convertToTournamentMatchDTO(newMatch);
+                newMatches.add(newMatchDTO);
             }
         }
+        return currentMatches;
     }
 
     private ParticipantDTO getWinner(TournamentMatchDTO match) {
@@ -471,17 +593,22 @@ public class BracketService {
         TournamentMatchDTO dto = new TournamentMatchDTO();
         dto.setId(match.getMatchId());
         dto.setName(match.getRound() + " - Match " + match.getMatchId());
+        dto.setNextMatchId(match.getNextMatchId());
         dto.setTournamentRoundText(match.getRound());
         dto.setStartTime(match.getDate().atTime(match.getStartTime()).toString());
         dto.setState(match.getStatus().toString());
 
-        List<ParticipantDTO> participants = match.getMatchTeams().stream()
+        // match.getMatchTeams()가 null인지 체크하고, null일 경우 빈 리스트로 처리
+        List<ParticipantDTO> participants = Optional.ofNullable(match.getMatchTeams())
+                .orElse(Collections.emptyList())  // null인 경우 빈 리스트 사용
+                .stream()
                 .map(this::convertToParticipantDTO)
                 .collect(Collectors.toList());
         dto.setParticipants(participants);
 
         return dto;
     }
+
 
     private ParticipantDTO convertToParticipantDTO(MatchTeam matchTeam) {
         ParticipantDTO dto = new ParticipantDTO();
@@ -537,96 +664,6 @@ public class BracketService {
         return null;  // 또는 다른 규칙을 적용할 수 있음 (예: 첫 번째 팀 승리)
     }
 
-    @Transactional
-    public List<TournamentMatchDTO> initializeTournament(String sport, TournamentRound startingRound) {
-        List<TournamentRound> tournamentRounds = Arrays.asList(TournamentRound.values());
-        int startIndex = tournamentRounds.indexOf(startingRound);
-        if (startIndex == -1) {
-            throw new IllegalArgumentException("Invalid starting round: " + startingRound);
-        }
-        List<TournamentRound> rounds = tournamentRounds.subList(startIndex, tournamentRounds.size());
 
-        List<Match> tournamentMatches = new ArrayList<>();
 
-        for (TournamentRound round : rounds) {
-            int matchesInRound = getMatchesCountForRound(round);
-            for (int i = 0; i < matchesInRound; i++) {
-                Match match = new Match();
-                match.setSport(sport);
-                match.setMatchType(MatchType.TOURNAMENT);
-                match.setRound(round.getDisplayName());
-                match.setStatus(MatchStatus.FUTURE);
-                match.setDate(LocalDate.now().plusDays(i));
-                match.setStartTime(LocalTime.of(18, 0));
-
-                // 초기 MatchTeam 생성 및 점수 설정
-                MatchTeam team1 = new MatchTeam();
-                team1.setMatch(match);
-                team1.setScore(0);
-
-                MatchTeam team2 = new MatchTeam();
-                team2.setMatch(match);
-                team2.setScore(0);
-
-                match.setMatchTeams(Arrays.asList(team1, team2));
-
-                tournamentMatches.add(match);
-            }
-        }
-
-        List<Match> savedMatches = matchRepository.saveAll(tournamentMatches);
-        List<TournamentMatchDTO> dtos = savedMatches.stream()
-                .map(this::convertToTournamentMatchDTO)
-                .collect(Collectors.toList());
-
-        updateNextMatchIds(dtos);
-        return dtos;
-    }
-
-    private MatchSummaryDTO.Response convertToMatchSummaryDTO(Match match) {
-        MatchSummaryDTO.Response dto = new MatchSummaryDTO.Response();
-        dto.setMatchId(match.getMatchId());
-        dto.setSport(match.getSport());
-        dto.setDate(match.getDate());
-        dto.setStartTime(match.getStartTime());
-        dto.setStatus(match.getStatus().toString());
-        dto.setGroupName(match.getGroupName());
-        dto.setRound(match.getRound());
-        dto.setMatchType(match.getMatchType());
-
-        List<MatchTeam> matchTeams = match.getMatchTeams();
-        if (matchTeams.size() >= 2) {
-            MatchTeam team1 = matchTeams.get(0);
-            MatchTeam team2 = matchTeams.get(1);
-
-            dto.setTeamName1(team1.getTeam().getDepartment().getKoreanName());
-            dto.setTeamName2(team2.getTeam().getDepartment().getKoreanName());
-            dto.setDepartment1(team1.getTeam().getDepartment().name());
-            dto.setDepartment2(team2.getTeam().getDepartment().name());
-            dto.setTeamScore1(team1.getScore());
-            dto.setTeamScore2(team2.getScore());
-            dto.setTeamOneSubScores(team1.getSubScores());  // 추가
-            dto.setTeamTwoSubScores(team2.getSubScores());  // 추가
-
-            dto.setResult(determineMatchResult(team1.getScore(), team2.getScore(), match.getStatus()));
-        }
-
-        return dto;
-    }
-
-    private MatchResult determineMatchResult(int score1, int score2, MatchStatus status) {
-        if (status == MatchStatus.FUTURE) {
-            return MatchResult.NOT_PLAYED;
-        } else if (status == MatchStatus.LIVE) {
-            return MatchResult.IN_PROGRESS;
-        } else {
-            if (score1 > score2) {
-                return MatchResult.TEAM_ONE_WIN;
-            } else if (score1 < score2) {
-                return MatchResult.TEAM_TWO_WIN;
-            } else {
-                return MatchResult.DRAW;
-            }
-        }
-    }
 }

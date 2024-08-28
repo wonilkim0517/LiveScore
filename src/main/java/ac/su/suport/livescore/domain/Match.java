@@ -12,8 +12,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@Table(name = "matches")
 @Getter @Setter
+@Table(name = "matches", uniqueConstraints = {
+        @UniqueConstraint(columnNames = {"sport", "date", "team1_id", "team2_id"})})
 public class Match {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -47,6 +48,16 @@ public class Match {
     @Column(name = "result")
     private MatchResult result;
 
+    @Column(name = "next_match_id")
+    private Long nextMatchId;
+
+    @Version
+    private Long version;
+    //데이터 상태 추적
+
+    @Column(name = "previous_match_id")
+    private Long previousMatchId;
+
     @OneToMany(mappedBy = "match", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<MatchTeam> matchTeams;
 
@@ -61,6 +72,7 @@ public class Match {
 
     @OneToMany(mappedBy = "match", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Video> videos = new ArrayList<>();
+
 
 
 }
