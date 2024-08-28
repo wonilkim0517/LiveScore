@@ -5,11 +5,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.util.concurrent.ConcurrentHashMap;
+import java.io.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.*;
 
 @Slf4j
 @Service
@@ -23,83 +22,96 @@ public class FFmpegService {
     private String rtmpServerUrl;
 
     private final ConcurrentHashMap<String, Process> runningProcesses = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, OutputStream> processInputStreams = new ConcurrentHashMap<>();
+    private final ExecutorService executorService = Executors.newCachedThreadPool();
 
-    public void startStreaming(String streamId) {
-        String outputPath = "/tmp/hls/" + streamId;
-        new File(outputPath).mkdirs();
-        String[] command = {
-                ffmpegPath,
-                "-f", "avfoundation",
-                "-framerate", "30",
-                "-video_size", "1280x720",
-                "-i", "0:0",
+    public void startWebcamStreaming(String streamId) {
+        log.info("Starting webcam streaming for stream ID: {}", streamId);
+
+        List<String> command = new ArrayList<>();
+        command.add(ffmpegPath);
+        command.addAll(List.of(
+                "-f", "webm",
+                "-i", "pipe:0",
+                "-vf", "scale=1280:720",  // 해상도를 720p로 증가
                 "-c:v", "libx264",
-                "-preset", "ultrafast",
+                "-preset", "veryfast",
                 "-tune", "zerolatency",
+                "-b:v", "2000k",  // 비디오 비트레이트를 2Mbps로 증가
+                "-maxrate", "2.5M",  // 최대 비트레이트를 2.5Mbps로 증가
+                "-bufsize", "5M",  // 버퍼 크기를 5M로 증가
                 "-c:a", "aac",
-                "-ar", "48000",
-                "-b:a", "128k",
-                "-f", "hls",
-                "-hls_time", "2",
-                "-hls_list_size", "5",
-                "-hls_flags", "delete_segments+append_list",
-                "-hls_segment_filename", outputPath + "/%03d.ts",
-                outputPath + "/playlist.m3u8"
-        };
+                "-ar", "44100",
+                "-b:a", "160k",  // 오디오 비트레이트를 160kbps로 증가
+                "-g", "60",  // GOP 크기를 60으로 증가 (2초마다 키프레임)
+                "-f", "flv",
+                rtmpServerUrl + "/" + streamId
+        ));
 
-        String[] webmCommand = {
-                ffmpegPath,
-                "-f", "avfoundation",
-                "-framerate", "30",
-                "-video_size", "1280x720",
-                "-i", "0:0",
-                "-c:v", "libvpx-vp9",
-                "-crf", "30",
-                "-b:v", "0",
-                "-b:a", "128k",
-                "-c:a", "libopus",
-                outputPath + "/" + streamId + ".webm"
-        };
-
+        ProcessBuilder pb = new ProcessBuilder(command);
+        pb.redirectErrorStream(true);
         try {
-            ProcessBuilder pb = new ProcessBuilder(command);
-            pb.redirectErrorStream(true);
             Process process = pb.start();
-
-            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-            String line;
-            while ((line = reader.readLine()) != null) {
-                log.info("FFmpeg: " + line);
-            }
             runningProcesses.put(streamId, process);
-            log.info("Started streaming for stream ID: {}", streamId);
+            processInputStreams.put(streamId, process.getOutputStream());
 
-            // Start WebM recording
-            ProcessBuilder webmPb = new ProcessBuilder(webmCommand);
-            webmPb.redirectErrorStream(true);
-            Process webmProcess = webmPb.start();
-            runningProcesses.put(streamId + "_webm", webmProcess);
-            log.info("Started WebM recording for stream ID: {}", streamId);
+            executorService.submit(() -> {
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        log.info("FFmpeg output: {}", line);
+                    }
+                } catch (IOException e) {
+                    log.error("Error reading FFmpeg output", e);
+                }
+            });
+
+            log.info("FFmpeg process started successfully for stream ID: {}", streamId);
         } catch (IOException e) {
-            log.error("Error starting stream for stream ID: {}", streamId, e);
+            log.error("Error starting FFmpeg process for stream ID: {}", streamId, e);
+            throw new RuntimeException("Failed to start FFmpeg process", e);
+        }
+    }
+
+    public void processWebcamData(String streamId, byte[] data) {
+        log.debug("Processing frame data for stream ID: {}. Data size: {} bytes", streamId, data.length);
+        OutputStream outputStream = processInputStreams.get(streamId);
+        if (outputStream != null) {
+            try {
+                outputStream.write(data);
+                outputStream.flush();
+                log.debug("Wrote frame data to FFmpeg for stream ID: {}", streamId);
+            } catch (IOException e) {
+                log.error("Error writing webcam data to FFmpeg for stream ID: {}", streamId, e);
+            }
+        } else {
+            log.warn("No FFmpeg process found for stream ID: {}", streamId);
         }
     }
 
     public void stopStreaming(String streamId) {
         Process process = runningProcesses.remove(streamId);
+        OutputStream outputStream = processInputStreams.remove(streamId);
+
         if (process != null) {
-            process.destroy();
-            log.info("Stopped streaming for stream ID: {}", streamId);
-        } else {
-            log.warn("No running stream found for stream ID: {}", streamId);
+            try {
+                process.destroy();
+                if (!process.waitFor(5, TimeUnit.SECONDS)) {
+                    process.destroyForcibly();
+                }
+                log.info("Stopped streaming for stream ID: {}", streamId);
+            } catch (InterruptedException e) {
+                log.error("Error waiting for process to terminate for stream ID: {}", streamId, e);
+                Thread.currentThread().interrupt();
+            }
         }
 
-        Process webmProcess = runningProcesses.remove(streamId + "_webm");
-        if (webmProcess != null) {
-            webmProcess.destroy();
-            log.info("Stopped WebM recording for stream ID: {}", streamId);
-        } else {
-            log.warn("No running WebM recording found for stream ID: {}", streamId);
+        if (outputStream != null) {
+            try {
+                outputStream.close();
+            } catch (IOException e) {
+                log.error("Error closing output stream for stream ID: {}", streamId, e);
+            }
         }
     }
 }

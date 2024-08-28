@@ -12,50 +12,75 @@ import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.ChannelInterceptor;
 import org.springframework.stereotype.Component;
 
-import java.security.Principal;
-import java.util.Optional;
-
 @Slf4j
-@RequiredArgsConstructor
 @Component
+@RequiredArgsConstructor
 public class StompHandler implements ChannelInterceptor {
 
     private final ChatRoomRepository chatRoomRepository;
     private final ChatService chatService;
 
-    // websocket을 통해 들어온 요청이 처리 되기전 실행된다.
     @Override
     public Message<?> preSend(Message<?> message, MessageChannel channel) {
         StompHeaderAccessor accessor = StompHeaderAccessor.wrap(message);
-        if (StompCommand.CONNECT == accessor.getCommand()) { // websocket 연결요청
-            // JWT 검증 코드 제거
-            String jwtToken = accessor.getFirstNativeHeader("token");
-            log.info("CONNECT {}", jwtToken);
-        } else if (StompCommand.SUBSCRIBE == accessor.getCommand()) { // 채팅룸 구독요청
-            // header정보에서 구독 destination정보를 얻고, roomId를 추출한다.
-            String roomId = chatService.getRoomId(Optional.ofNullable((String) message.getHeaders().get("simpDestination")).orElse("InvalidRoomId"));
-            // 채팅방에 들어온 클라이언트 sessionId를 roomId와 맵핑해 놓는다.(나중에 특정 세션이 어떤 채팅방에 들어가 있는지 알기 위함)
+
+        if (StompCommand.CONNECT == accessor.getCommand()) {
+            log.info("CONNECT");
+        } else if (StompCommand.SUBSCRIBE == accessor.getCommand()) {
             String sessionId = (String) message.getHeaders().get("simpSessionId");
-            chatRoomRepository.setUserEnterInfo(sessionId, roomId);
-            // 채팅방의 인원수를 +1한다.
-            chatRoomRepository.plusUserCount(roomId);
-            // 클라이언트 입장 메시지를 채팅방에 발송한다.(redis publish)
-            String name = Optional.ofNullable((Principal) message.getHeaders().get("simpUser")).map(Principal::getName).orElse("UnknownUser");
-            chatService.sendChatMessage(ChatMessage.builder().type(ChatMessage.MessageType.JOIN).roomId(roomId).sender(name).build());
-            log.info("SUBSCRIBED {}, {}", name, roomId);
-        } else if (StompCommand.DISCONNECT == accessor.getCommand()) { // Websocket 연결 종료
-            // 연결이 종료된 클라이언트 sesssionId로 채팅방 id를 얻는다.
+            String destination = accessor.getDestination();
+            String roomId = chatService.getRoomId(destination);
+
+            log.info("SUBSCRIBE: SessionId: {}, RoomId: {}", sessionId, roomId);
+
+            if (!chatRoomRepository.isUserAlreadySubscribed(sessionId, roomId)) {
+                chatRoomRepository.setUserEnterInfo(sessionId, roomId);
+                int userCount = (int) chatRoomRepository.getUserCount(roomId);
+
+                String nickname = (String) accessor.getSessionAttributes().get("nickname");
+                if (nickname == null || nickname.trim().isEmpty()) {
+                    nickname = "Anonymous";
+                }
+
+                chatService.sendChatMessage(ChatMessage.builder()
+                        .type(ChatMessage.MessageType.JOIN)
+                        .roomId(roomId)
+                        .sender("[알림]")
+                        .message(nickname + "님이 방에 입장했습니다.")
+                        .nickname(nickname)
+                        .userCount(userCount)
+                        .build());
+
+                log.info("User {} subscribed to room {}. Current user count: {}", nickname, roomId, userCount);
+            } else {
+                log.info("User already subscribed: SessionId: {}, RoomId: {}", sessionId, roomId);
+            }
+        } else if (StompCommand.DISCONNECT == accessor.getCommand()) {
             String sessionId = (String) message.getHeaders().get("simpSessionId");
             String roomId = chatRoomRepository.getUserEnterRoomId(sessionId);
-            // 채팅방의 인원수를 -1한다.
-            chatRoomRepository.minusUserCount(roomId);
-            // 클라이언트 퇴장 메시지를 채팅방에 발송한다.(redis publish)
-            String name = Optional.ofNullable((Principal) message.getHeaders().get("simpUser")).map(Principal::getName).orElse("UnknownUser");
-            chatService.sendChatMessage(ChatMessage.builder().type(ChatMessage.MessageType.QUIT).roomId(roomId).sender(name).build());
-            // 퇴장한 클라이언트의 roomId 맵핑 정보를 삭제한다.
-            chatRoomRepository.removeUserEnterInfo(sessionId);
-            log.info("DISCONNECTED {}, {}", sessionId, roomId);
+
+            if (roomId != null) {
+                chatRoomRepository.removeUserEnterInfo(sessionId);
+                int userCount = (int) chatRoomRepository.getUserCount(roomId);
+
+                String nickname = (String) accessor.getSessionAttributes().get("nickname");
+                if (nickname == null || nickname.trim().isEmpty()) {
+                    nickname = "Anonymous";
+                }
+
+                chatService.sendChatMessage(ChatMessage.builder()
+                        .type(ChatMessage.MessageType.QUIT)
+                        .roomId(roomId)
+                        .sender("[알림]")
+                        .message(nickname + "님이 방에서 나갔습니다.")
+                        .nickname(nickname)
+                        .userCount(userCount)
+                        .build());
+
+                log.info("User {} disconnected from room {}. Current user count: {}", nickname, roomId, userCount);
+            }
         }
+
         return message;
     }
 }

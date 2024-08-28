@@ -33,6 +33,7 @@ dependencies {
 
     // Spring Kafka
     implementation 'org.springframework.kafka:spring-kafka'
+    implementation 'org.apache.kafka:kafka-streams'
 
     // AWS
     implementation platform('software.amazon.awssdk:bom:2.15.0')
@@ -68,12 +69,12 @@ dependencies {
     implementation 'io.jsonwebtoken:jjwt-jackson:0.11.5' // for JSON serialization/deserialization
 
     // embedded-redis
-    implementation ('it.ozimov:embedded-redis:0.7.3') { exclude group: "org.slf4j", module: "slf4j-simple" }
-
-    // Exclude commons-logging
-    implementation ('org.springframework.boot:spring-boot-starter-logging') {
-        exclude group: 'commons-logging', module: 'commons-logging'
+    implementation ('it.ozimov:embedded-redis:0.7.3') {
+        exclude group: "org.slf4j", module: "slf4j-simple" // SLF4J의 간단한 구현체를 제외
     }
+
+    // Logging: SLF4J + Logback (via spring-boot-starter-logging)
+    // Spring Boot의 기본 로깅 설정을 사용하므로, 별도의 Logback 관련 의존성을 추가할 필요가 없습니다.
 
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
