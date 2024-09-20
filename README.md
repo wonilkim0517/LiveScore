@@ -107,7 +107,7 @@
 
 **Backend**  
 - **Language** : Java  
-- **Library & Framework** : Spring Boot, WebSocket, rtmp-hls  
+- **Library & Framework** : Spring Boot, WebSocket, Nginx(Rtmp-Hls)
 - **Database** : MySQLDB  
 - **ORM** : JPA  
 - **Deploy**: AWS(EC2, RDS)
