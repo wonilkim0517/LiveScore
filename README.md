@@ -117,5 +117,5 @@
 ## 🙋‍♂️ Developer
 
 <p align="middle">
-  <img src="https://github.com/user-attachments/assets/87ed3aa7-0345-44aa-9253-0b8996af58e8" alt="팀원들" width="860px"/>
+  <img src="https://github.com/user-attachments/assets/87ed3aa7-0345-44aa-9253-0b8996af58e8" alt="팀원들" width="870px"/>
 </p>
